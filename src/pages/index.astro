@@ -1,0 +1,524 @@
+---
+import { Font } from 'astro:assets';
+
+const title = 'Diagnóstico de tu web · felixcorcoran';
+const description =
+	'Escribe la dirección de tu web y comprueba qué se encuentra un cliente al entrar: si carga, si es segura, si el teléfono se puede pulsar en el móvil. Solo lo que se puede demostrar.';
+const canonical = new URL('/', Astro.site);
+---
+
+<!doctype html>
+<html lang="es">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>{title}</title>
+		<meta name="description" content={description} />
+		<link rel="canonical" href={canonical} />
+		<meta name="theme-color" content="#FAF9F6" />
+		<link rel="icon" type="image/png" sizes="96x96" href="/favicon.png" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<meta property="og:type" content="website" />
+		<meta property="og:title" content={title} />
+		<meta property="og:description" content={description} />
+		<meta property="og:url" content={canonical} />
+		<meta property="og:locale" content="es_ES" />
+		<Font cssVariable="--font-sora" preload />
+	</head>
+	<body>
+		<header class="top">
+			<a class="brand" href="https://felixcorcoran.es">felixcorcoran</a>
+			<span class="label">Diagnóstico</span>
+		</header>
+
+		<main>
+			<section class="intro">
+				<h1>¿Qué se encuentra un cliente al entrar en tu web?</h1>
+				<p class="lead">Escribe la dirección. Se comprueba la portada y solo se dice lo que se puede demostrar.</p>
+
+				<form id="form" class="form" novalidate>
+					<label class="sr-only" for="url">Dirección de tu web</label>
+					<input
+						id="url"
+						name="url"
+						type="text"
+						inputmode="url"
+						autocomplete="url"
+						autocapitalize="off"
+						spellcheck="false"
+						placeholder="mipeluqueria.es"
+						required
+					/>
+					<button type="submit" id="submit">Comprobar</button>
+				</form>
+				<p class="hint">La dirección que escribes solo se usa para hacer la comprobación. No se guarda.</p>
+			</section>
+
+			<p id="status" class="status" role="status" aria-live="polite"></p>
+
+			<section id="result" class="result" hidden>
+				<div class="result-head">
+					<p class="label">Resultado</p>
+					<h2 id="result-title"></h2>
+					<p id="result-summary" class="summary"></p>
+				</div>
+				<ol id="findings" class="findings"></ol>
+
+				<div class="limits">
+					<h3>Lo que no se ha comprobado</h3>
+					<ul id="limits"></ul>
+				</div>
+
+				<div class="cta">
+					<p class="cta-title">Esto es lo que se ve desde fuera.</p>
+					<p>
+						Si quieres que mire tu negocio por dentro, cuéntame un poco de él y qué te gustaría mejorar. Te enseño hasta 3
+						oportunidades concretas. Gratis y sin compromiso.
+					</p>
+					<a class="cta-link" href="https://felixcorcoran.es/contacto">Solicitar auditoría gratuita <span aria-hidden="true">→</span></a>
+				</div>
+			</section>
+		</main>
+
+		<footer class="foot">
+			<a href="https://felixcorcoran.es">felixcorcoran.es</a>
+			<a href="https://felixcorcoran.es/aviso-legal">Aviso legal</a>
+			<a href="https://felixcorcoran.es/privacidad">Privacidad</a>
+		</footer>
+
+		<script>
+			type Nivel = 'fallo' | 'aviso' | 'bien' | 'neutro';
+			interface Hallazgo {
+				senal: string;
+				nivel: Nivel;
+				titulo: string;
+				porQue: string;
+				hecho: string;
+				detalle: string | null;
+			}
+			interface Respuesta {
+				url: string;
+				finalUrl: string | null;
+				titulo: string | null;
+				estado: 'ok' | 'down' | 'unverified' | 'blocked';
+				hallazgos: Hallazgo[];
+				noComprobado: string[];
+			}
+
+			const form = document.querySelector<HTMLFormElement>('#form')!;
+			const input = document.querySelector<HTMLInputElement>('#url')!;
+			const button = document.querySelector<HTMLButtonElement>('#submit')!;
+			const status = document.querySelector<HTMLParagraphElement>('#status')!;
+			const result = document.querySelector<HTMLElement>('#result')!;
+
+			const NIVEL_LABEL: Record<Nivel, string> = { fallo: 'Arreglar', aviso: 'Revisar', neutro: 'Sin datos', bien: 'Bien' };
+
+			const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string) => {
+				const node = document.createElement(tag);
+				if (className) node.className = className;
+				if (text) node.textContent = text;
+				return node;
+			};
+
+			const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+			function summary(data: Respuesta): string {
+				if (data.estado === 'down') return 'La web no carga. Lo demás no se ha podido mirar.';
+				if (data.estado === 'unverified' || data.estado === 'blocked') return 'No se ha podido leer la portada.';
+				const count = (n: Nivel) => data.hallazgos.filter((h) => h.nivel === n).length;
+				const fallos = count('fallo');
+				const avisos = count('aviso');
+				const parts = [
+					fallos ? plural(fallos, 'cosa que arreglar', 'cosas que arreglar') : 'Nada que arreglar en lo que se ha mirado',
+					avisos ? plural(avisos, 'cosa que revisar', 'cosas que revisar') : '',
+					plural(count('bien'), 'cosa bien', 'cosas bien'),
+				];
+				return parts.filter(Boolean).join(' · ');
+			}
+
+			function render(data: Respuesta) {
+				const host = new URL(data.finalUrl ?? data.url).hostname.replace(/^www\./, '');
+				document.querySelector('#result-title')!.textContent = host;
+				document.querySelector('#result-summary')!.textContent = summary(data);
+
+				const list = document.querySelector('#findings')!;
+				list.replaceChildren(
+					...data.hallazgos.map((h) => {
+						const item = el('li', `finding finding--${h.nivel}`);
+						const head = el('div', 'finding-head');
+						head.append(el('span', 'tag', NIVEL_LABEL[h.nivel]), el('h3', '', h.titulo));
+						item.append(head, el('p', 'fact', h.hecho), el('p', 'why', h.porQue));
+						return item;
+					}),
+				);
+				document.querySelector('#limits')!.replaceChildren(...data.noComprobado.map((t) => el('li', '', t)));
+
+				result.hidden = false;
+				result.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+			}
+
+			form.addEventListener('submit', async (event) => {
+				event.preventDefault();
+				const url = input.value.trim();
+				if (!url) {
+					status.textContent = 'Escribe la dirección de tu web, por ejemplo mipeluqueria.es.';
+					input.focus();
+					return;
+				}
+				button.disabled = true;
+				form.setAttribute('aria-busy', 'true');
+				result.hidden = true;
+				status.classList.remove('status--error');
+				status.textContent = `Comprobando ${url}… Suele tardar unos segundos.`;
+				try {
+					const res = await fetch('/api/diagnostico', {
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({ url }),
+					});
+					const data = await res.json();
+					if (!res.ok) throw new Error(data.error ?? 'No se ha podido hacer la comprobación.');
+					status.textContent = '';
+					render(data as Respuesta);
+				} catch (err) {
+					status.classList.add('status--error');
+					status.textContent =
+						err instanceof TypeError ? 'No se ha podido conectar. Revisa tu conexión y vuelve a probar.' : (err as Error).message;
+				} finally {
+					button.disabled = false;
+					form.removeAttribute('aria-busy');
+				}
+			});
+		</script>
+
+		<style is:global>
+			:root {
+				--bg: #faf9f6;
+				--text: #171717;
+				--text-muted: #6b6b6b;
+				--accent: #f28c7a;
+				--accent-soft: #ffd6cc;
+				--surface: #fff;
+				--line: rgb(23 23 23 / 0.1);
+				--ok: #3d7a5c;
+				--gutter: clamp(1rem, 4vw, 2.5rem);
+				--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+				color-scheme: light;
+			}
+			*,
+			*::before,
+			*::after {
+				box-sizing: border-box;
+			}
+			html {
+				-webkit-text-size-adjust: 100%;
+			}
+			body {
+				margin: 0;
+				min-height: 100svh;
+				display: flex;
+				flex-direction: column;
+				background: var(--bg);
+				color: var(--text);
+				font-family: var(--font-sora), sans-serif;
+				font-weight: 300;
+				line-height: 1.6;
+				-webkit-font-smoothing: antialiased;
+			}
+			h1,
+			h2,
+			h3,
+			p,
+			ol,
+			ul {
+				margin: 0;
+			}
+			a {
+				color: inherit;
+			}
+			:focus-visible {
+				outline: 2px solid var(--accent);
+				outline-offset: 3px;
+			}
+			.sr-only {
+				position: absolute;
+				width: 1px;
+				height: 1px;
+				overflow: hidden;
+				clip: rect(0 0 0 0);
+				white-space: nowrap;
+			}
+			.label {
+				font-size: 0.72rem;
+				font-weight: 500;
+				letter-spacing: 0.16em;
+				text-transform: uppercase;
+				color: var(--text-muted);
+			}
+
+			.top,
+			main,
+			.foot {
+				width: min(100% - 2 * var(--gutter), 46rem);
+				margin-inline: auto;
+			}
+			.top {
+				display: flex;
+				justify-content: space-between;
+				align-items: baseline;
+				padding-block: 1.5rem;
+			}
+			.brand {
+				font-weight: 500;
+				text-decoration: none;
+				letter-spacing: -0.01em;
+			}
+			main {
+				flex: 1;
+			}
+
+			.intro {
+				padding-block: clamp(3rem, 12vh, 7rem) 2rem;
+			}
+			h1 {
+				font-size: clamp(2rem, 6vw, 3.4rem);
+				font-weight: 400;
+				line-height: 1.08;
+				letter-spacing: -0.03em;
+				text-wrap: balance;
+			}
+			.lead {
+				margin-top: 1.25rem;
+				max-width: 34rem;
+				font-size: clamp(1rem, 2.2vw, 1.15rem);
+				color: var(--text-muted);
+			}
+			.form {
+				display: flex;
+				gap: 0.5rem;
+				margin-top: 2.5rem;
+				padding: 0.4rem;
+				background: var(--surface);
+				border: 1px solid var(--line);
+				border-radius: 999px;
+				box-shadow: 0 1px 2px rgb(23 23 23 / 0.04), 0 8px 24px -12px rgb(23 23 23 / 0.12);
+				transition: border-color 0.2s;
+			}
+			.form:focus-within {
+				border-color: var(--accent);
+			}
+			.form input {
+				flex: 1;
+				min-width: 0;
+				padding: 0.75rem 1rem;
+				border: 0;
+				background: transparent;
+				font: inherit;
+				font-weight: 400;
+				font-size: 1rem;
+				color: var(--text);
+			}
+			.form input:focus-visible {
+				outline: none;
+			}
+			.form input::placeholder {
+				color: rgb(23 23 23 / 0.35);
+			}
+			.form button {
+				flex: none;
+				padding: 0.75rem 1.4rem;
+				border: 0;
+				border-radius: 999px;
+				background: var(--text);
+				color: var(--bg);
+				font: inherit;
+				font-weight: 500;
+				cursor: pointer;
+				transition: transform 0.3s var(--ease-out), opacity 0.2s;
+			}
+			.form button:hover {
+				transform: translateY(-1px);
+			}
+			.form button:disabled {
+				opacity: 0.5;
+				cursor: progress;
+				transform: none;
+			}
+			.hint {
+				margin-top: 0.9rem;
+				padding-inline: 1rem;
+				font-size: 0.8rem;
+				color: var(--text-muted);
+			}
+
+			.status {
+				min-height: 1.6em;
+				color: var(--text-muted);
+			}
+			.status--error {
+				color: #b4452f;
+			}
+
+			.result {
+				padding-block: 2rem 4rem;
+				scroll-margin-top: 1.5rem;
+				animation: enter 0.6s var(--ease-out);
+			}
+			@keyframes enter {
+				from {
+					opacity: 0;
+					filter: blur(6px);
+					transform: translateY(8px);
+				}
+			}
+			@media (prefers-reduced-motion: reduce) {
+				.result {
+					animation: none;
+				}
+			}
+			.result-head {
+				padding-bottom: 1.5rem;
+				border-bottom: 1px solid var(--line);
+			}
+			.result-head h2 {
+				margin-top: 0.4rem;
+				font-size: clamp(1.5rem, 4vw, 2.1rem);
+				font-weight: 400;
+				letter-spacing: -0.02em;
+				overflow-wrap: anywhere;
+			}
+			.summary {
+				margin-top: 0.4rem;
+				color: var(--text-muted);
+			}
+
+			.findings {
+				list-style: none;
+				padding: 0;
+			}
+			.finding {
+				padding-block: 1.4rem;
+				border-bottom: 1px solid var(--line);
+			}
+			.finding-head {
+				display: flex;
+				align-items: baseline;
+				gap: 0.75rem;
+			}
+			.finding-head h3 {
+				font-size: 1.1rem;
+				font-weight: 500;
+				letter-spacing: -0.01em;
+			}
+			.tag {
+				flex: none;
+				min-width: 5.5rem;
+				font-size: 0.68rem;
+				font-weight: 500;
+				letter-spacing: 0.14em;
+				text-transform: uppercase;
+				color: var(--text-muted);
+			}
+			.finding--fallo .tag {
+				color: #c45a45;
+			}
+			.finding--bien .tag {
+				color: var(--ok);
+			}
+			.fact,
+			.why {
+				margin-left: 6.25rem;
+			}
+			.fact {
+				margin-top: 0.35rem;
+				font-weight: 400;
+			}
+			.why {
+				margin-top: 0.25rem;
+				color: var(--text-muted);
+				font-size: 0.95rem;
+			}
+			.finding--bien .why {
+				display: none;
+			}
+			@media (max-width: 34rem) {
+				.finding-head {
+					flex-direction: column;
+					gap: 0.2rem;
+				}
+				.fact,
+				.why {
+					margin-left: 0;
+				}
+			}
+
+			.limits {
+				margin-top: 2.5rem;
+			}
+			.limits h3 {
+				font-size: 0.72rem;
+				font-weight: 500;
+				letter-spacing: 0.16em;
+				text-transform: uppercase;
+				color: var(--text-muted);
+			}
+			.limits ul {
+				margin-top: 0.75rem;
+				padding-left: 1.1rem;
+				color: var(--text-muted);
+				font-size: 0.92rem;
+			}
+			.limits li + li {
+				margin-top: 0.3rem;
+			}
+
+			.cta {
+				margin-top: 3rem;
+				padding: clamp(1.5rem, 4vw, 2.25rem);
+				background: var(--accent-soft);
+				border-radius: 1.5rem;
+			}
+			.cta-title {
+				font-size: clamp(1.3rem, 3.2vw, 1.7rem);
+				font-weight: 400;
+				line-height: 1.2;
+				letter-spacing: -0.02em;
+			}
+			.cta p + p {
+				margin-top: 0.75rem;
+				max-width: 34rem;
+			}
+			.cta-link {
+				display: inline-flex;
+				gap: 0.4rem;
+				margin-top: 1.25rem;
+				font-weight: 500;
+				text-decoration: underline;
+				text-decoration-thickness: 1px;
+				text-underline-offset: 0.3em;
+			}
+			.cta-link span {
+				transition: transform 0.3s var(--ease-out);
+			}
+			.cta-link:hover span {
+				transform: translateX(3px);
+			}
+
+			.foot {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 0.5rem 1.5rem;
+				padding-block: 2rem;
+				border-top: 1px solid var(--line);
+				font-size: 0.8rem;
+				color: var(--text-muted);
+			}
+			.foot a {
+				text-decoration: none;
+			}
+			.foot a:hover {
+				color: var(--text);
+			}
+		</style>
+	</body>
+</html>
