@@ -1,0 +1,128 @@
+/* El mismo sistema que felixcorcoran.es (src/styles/global.css de la
+   landing): paleta, papel con grano, marco, rótulos. Si cambia allí, cambia
+   aquí. */
+
+:root {
+  --bg: #FAF9F6;
+  --text: #171717;
+  --text-muted: #6B6B6B;
+  --accent: #F28C7A;
+  --accent-soft: #FFD6CC;
+
+  /* Los mismos colores como canales, para usarlos con transparencia */
+  --ink: 23 23 23;
+  --paper: 250 249 246;
+  --surface: #fff;
+  --surface-rgb: 255 255 255;
+
+  /* El coral de texto: el de la marca no llega a 4.5:1 sobre crema */
+  --accent-text: #C2513C;
+
+  color-scheme: light;
+
+  --gutter: clamp(1rem, 3vw, 2.5rem);
+  --frame: min(100% - 2 * var(--gutter), 84rem);
+  --frame-pad: clamp(1.25rem, 2.2vw, 2rem);
+  --nav-top: clamp(0.75rem, 1.6vw, 1.25rem);
+  --nav-height: 3.25rem;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --rule: rgb(var(--ink) / 0.1);
+  --label-col: clamp(10rem, 18vw, 15rem);
+  --col-gap: clamp(2rem, 5vw, 5rem);
+
+  --grain: 0.12;
+  --grain-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='.33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='discrete' tableValues='0 1'/%3E%3CfeFuncG type='discrete' tableValues='0 1'/%3E%3CfeFuncB type='discrete' tableValues='0 1'/%3E%3CfeFuncA type='table' tableValues='1 0 1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Oscuro: solo si el visitante lo elige (aquí o en felixcorcoran.es). Lo
+   aplica un script en <head> antes de pintar. */
+:root[data-theme="dark"] {
+  --bg: #131211;
+  --text: #EEEBE5;
+  --text-muted: #A39F98;
+  --accent-soft: #5B3129;
+  --accent-text: #F28C7A;
+
+  --ink: 238 235 229;
+  --paper: 19 18 17;
+  --surface: #262321;
+  --surface-rgb: 38 35 33;
+
+  color-scheme: dark;
+}
+
+@media (max-width: 40rem) {
+  :root {
+    --nav-height: 3rem;
+  }
+}
+
+html {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sora), sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
+}
+
+/* El papel: grano continuo de arriba abajo, como en la landing */
+body::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--grain);
+  background-image: var(--grain-image);
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+
+:root[data-theme="dark"] :focus-visible {
+  outline-color: var(--accent);
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+:root[data-theme="dark"] .eyebrow {
+  color: color-mix(in srgb, var(--accent) 62%, var(--text-muted));
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

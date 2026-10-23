@@ -1,5 +1,9 @@
 ---
 import { Font } from 'astro:assets';
+import Navbar from '../components/Navbar.astro';
+import Footer from '../components/Footer.astro';
+import { site } from '../data/site';
+import '../styles/global.css';
 
 const title = 'Diagnóstico de tu web · felixcorcoran';
 const description =
@@ -15,7 +19,28 @@ const canonical = new URL('/', Astro.site);
 		<title>{title}</title>
 		<meta name="description" content={description} />
 		<link rel="canonical" href={canonical} />
-		<meta name="theme-color" content="#FAF9F6" />
+		<meta name="theme-color" content="#FAF9F6" data-theme-color />
+		<!-- Claro por defecto, como felixcorcoran.es. Oscuro si se pidió al
+		     llegar desde allí (?tema=oscuro, que se recuerda y se quita de la
+		     barra) o si se eligió aquí antes. Va antes de pintar: sin destello. -->
+		<script is:inline>
+			try {
+				const url = new URL(location.href);
+				const asked = url.searchParams.get('tema');
+				if (asked === 'oscuro') localStorage.setItem('tema', 'oscuro');
+				if (asked === 'claro') localStorage.removeItem('tema');
+				if (asked) {
+					url.searchParams.delete('tema');
+					history.replaceState(null, '', url.pathname + url.search + url.hash);
+				}
+				if (asked === 'oscuro' || (!asked && localStorage.getItem('tema') === 'oscuro')) {
+					document.documentElement.dataset.theme = 'dark';
+					document.querySelector('[data-theme-color]')?.setAttribute('content', '#131211');
+				}
+			} catch {
+				if (location.search.includes('tema=oscuro')) document.documentElement.dataset.theme = 'dark';
+			}
+		</script>
 		<link rel="icon" type="image/png" sizes="96x96" href="/favicon.png" />
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 		<meta property="og:type" content="website" />
@@ -26,65 +51,76 @@ const canonical = new URL('/', Astro.site);
 		<Font cssVariable="--font-sora" preload />
 	</head>
 	<body>
-		<header class="top">
-			<a class="brand" href="https://felixcorcoran.es">felixcorcoran</a>
-			<span class="label">Diagnóstico</span>
-		</header>
+		<Navbar />
 
 		<main>
-			<section class="intro">
-				<h1>¿Qué se encuentra un cliente al entrar en tu web?</h1>
+			<section class="hero" aria-labelledby="title">
+				<p class="eyebrow">Diagnóstico gratuito</p>
+				<h1 id="title" class="title">¿Qué encuentra un cliente en tu web?</h1>
 				<p class="lead">Escribe la dirección. Se comprueba la portada y solo se dice lo que se puede demostrar.</p>
 
 				<form id="form" class="form" novalidate>
-					<label class="sr-only" for="url">Dirección de tu web</label>
-					<input
-						id="url"
-						name="url"
-						type="text"
-						inputmode="url"
-						autocomplete="url"
-						autocapitalize="off"
-						spellcheck="false"
-						placeholder="mipeluqueria.es"
-						required
-					/>
-					<button type="submit" id="submit">Comprobar</button>
+					<div class="field">
+						<label for="url">Tu web</label>
+						<input
+							id="url"
+							name="url"
+							type="text"
+							inputmode="url"
+							autocomplete="url"
+							autocapitalize="off"
+							spellcheck="false"
+							placeholder="mipeluqueria.es"
+							required
+						/>
+					</div>
+					<button type="submit" id="submit" class="submit">
+						Comprobar
+						<svg viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M1.5 6h9M7 2.5 10.5 6 7 9.5"></path></svg>
+					</button>
 				</form>
+				<p id="status" class="status" role="status" aria-live="polite"></p>
 				<p class="hint">La dirección que escribes solo se usa para hacer la comprobación. No se guarda.</p>
 			</section>
 
-			<p id="status" class="status" role="status" aria-live="polite"></p>
-
-			<section id="result" class="result" hidden>
-				<div class="result-head">
-					<p class="label">Resultado</p>
-					<h2 id="result-title"></h2>
-					<p id="result-summary" class="summary"></p>
-				</div>
-				<ol id="findings" class="findings"></ol>
-
-				<div class="limits">
-					<h3>Lo que no se ha comprobado</h3>
-					<ul id="limits"></ul>
+			<section id="result" class="result" aria-labelledby="result-title" hidden>
+				<div class="row">
+					<span class="row-rule" aria-hidden="true"></span>
+					<p class="eyebrow">Resultado</p>
+					<div>
+						<h2 id="result-title" class="domain"></h2>
+						<p id="result-note" class="note"></p>
+						<dl id="counts" class="counts"></dl>
+					</div>
 				</div>
 
-				<div class="cta">
-					<p class="cta-title">Esto es lo que se ve desde fuera.</p>
-					<p>
-						Si quieres que mire tu negocio por dentro, cuéntame un poco de él y qué te gustaría mejorar. Te enseño hasta 3
-						oportunidades concretas. Gratis y sin compromiso.
-					</p>
-					<a class="cta-link" href="https://felixcorcoran.es/contacto">Solicitar auditoría gratuita <span aria-hidden="true">→</span></a>
+				<div id="groups"></div>
+
+				<div class="row">
+					<span class="row-rule" aria-hidden="true"></span>
+					<p class="eyebrow">No se ha comprobado</p>
+					<ul id="limits" class="limits"></ul>
+				</div>
+
+				<div class="row next">
+					<span class="row-rule" aria-hidden="true"></span>
+					<p class="eyebrow">Siguiente paso</p>
+					<div>
+						<p class="next-title">Esto es lo que se ve desde fuera.</p>
+						<p class="next-text">
+							Si quieres que mire tu negocio por dentro, cuéntame un poco de él y qué te gustaría mejorar. Te enseño hasta 3
+							oportunidades concretas. Gratis y sin compromiso.
+						</p>
+						<a class="submit" href={site.contact} data-site-link>
+							Solicitar auditoría gratuita
+							<svg viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M1.5 6h9M7 2.5 10.5 6 7 9.5"></path></svg>
+						</a>
+					</div>
 				</div>
 			</section>
 		</main>
 
-		<footer class="foot">
-			<a href="https://felixcorcoran.es">felixcorcoran.es</a>
-			<a href="https://felixcorcoran.es/aviso-legal">Aviso legal</a>
-			<a href="https://felixcorcoran.es/privacidad">Privacidad</a>
-		</footer>
+		<Footer />
 
 		<script>
 			type Nivel = 'fallo' | 'aviso' | 'bien' | 'neutro';
@@ -99,7 +135,6 @@ const canonical = new URL('/', Astro.site);
 			interface Respuesta {
 				url: string;
 				finalUrl: string | null;
-				titulo: string | null;
 				estado: 'ok' | 'down' | 'unverified' | 'blocked';
 				hallazgos: Hallazgo[];
 				noComprobado: string[];
@@ -111,7 +146,13 @@ const canonical = new URL('/', Astro.site);
 			const status = document.querySelector<HTMLParagraphElement>('#status')!;
 			const result = document.querySelector<HTMLElement>('#result')!;
 
-			const NIVEL_LABEL: Record<Nivel, string> = { fallo: 'Arreglar', aviso: 'Revisar', neutro: 'Sin datos', bien: 'Bien' };
+			// Cada nivel, su fila. «Bien» va en corto: es lo que no hay que tocar.
+			const GROUPS: { nivel: Nivel; label: string }[] = [
+				{ nivel: 'fallo', label: 'Arreglar' },
+				{ nivel: 'aviso', label: 'Revisar' },
+				{ nivel: 'neutro', label: 'Sin datos' },
+				{ nivel: 'bien', label: 'Está bien' },
+			];
 
 			const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string) => {
 				const node = document.createElement(tag);
@@ -120,35 +161,48 @@ const canonical = new URL('/', Astro.site);
 				return node;
 			};
 
-			const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+			function row(label: string, nivel: Nivel, content: HTMLElement) {
+				const wrap = el('div', `row row--${nivel}`);
+				const rule = el('span', 'row-rule');
+				rule.setAttribute('aria-hidden', 'true');
+				const eyebrow = el('p', 'eyebrow');
+				eyebrow.append(el('span', `dot dot--${nivel}`), label);
+				wrap.append(rule, eyebrow, content);
+				return wrap;
+			}
 
-			function summary(data: Respuesta): string {
+			function note(data: Respuesta): string {
 				if (data.estado === 'down') return 'La web no carga. Lo demás no se ha podido mirar.';
 				if (data.estado === 'unverified' || data.estado === 'blocked') return 'No se ha podido leer la portada.';
-				const count = (n: Nivel) => data.hallazgos.filter((h) => h.nivel === n).length;
-				const fallos = count('fallo');
-				const avisos = count('aviso');
-				const parts = [
-					fallos ? plural(fallos, 'cosa que arreglar', 'cosas que arreglar') : 'Nada que arreglar en lo que se ha mirado',
-					avisos ? plural(avisos, 'cosa que revisar', 'cosas que revisar') : '',
-					plural(count('bien'), 'cosa bien', 'cosas bien'),
-				];
-				return parts.filter(Boolean).join(' · ');
+				return 'Esto es lo que se ha encontrado en la portada.';
 			}
 
 			function render(data: Respuesta) {
-				const host = new URL(data.finalUrl ?? data.url).hostname.replace(/^www\./, '');
-				document.querySelector('#result-title')!.textContent = host;
-				document.querySelector('#result-summary')!.textContent = summary(data);
+				document.querySelector('#result-title')!.textContent = new URL(data.finalUrl ?? data.url).hostname.replace(/^www\./, '');
+				document.querySelector('#result-note')!.textContent = note(data);
 
-				const list = document.querySelector('#findings')!;
-				list.replaceChildren(
-					...data.hallazgos.map((h) => {
-						const item = el('li', `finding finding--${h.nivel}`);
-						const head = el('div', 'finding-head');
-						head.append(el('span', 'tag', NIVEL_LABEL[h.nivel]), el('h3', '', h.titulo));
-						item.append(head, el('p', 'fact', h.hecho), el('p', 'why', h.porQue));
-						return item;
+				const count = (n: Nivel) => data.hallazgos.filter((h) => h.nivel === n).length;
+				const counts = document.querySelector('#counts')!;
+				counts.replaceChildren();
+				if (data.estado === 'ok') {
+					for (const [n, label] of [['fallo', 'que arreglar'], ['aviso', 'que revisar'], ['bien', 'bien']] as const) {
+						const item = el('div', `count count--${count(n) ? n : 'cero'}`);
+						item.append(el('dt', '', label), el('dd', '', String(count(n))));
+						counts.append(item);
+					}
+				}
+
+				const groups = document.querySelector('#groups')!;
+				groups.replaceChildren(
+					...GROUPS.filter((g) => count(g.nivel) > 0).map(({ nivel, label }) => {
+						const list = el('ul', nivel === 'bien' ? 'good' : 'findings');
+						for (const h of data.hallazgos.filter((x) => x.nivel === nivel)) {
+							const item = el('li', 'finding');
+							if (nivel === 'bien') item.append(el('span', 'good-title', h.titulo), el('span', 'good-fact', h.hecho));
+							else item.append(el('h3', '', h.titulo), el('p', 'fact', h.hecho), el('p', 'why', h.porQue));
+							list.append(item);
+						}
+						return row(label, nivel, list);
 					}),
 				);
 				document.querySelector('#limits')!.replaceChildren(...data.noComprobado.map((t) => el('li', '', t)));
@@ -160,7 +214,9 @@ const canonical = new URL('/', Astro.site);
 			form.addEventListener('submit', async (event) => {
 				event.preventDefault();
 				const url = input.value.trim();
+				status.classList.remove('is-busy', 'is-error');
 				if (!url) {
+					status.classList.add('is-error');
 					status.textContent = 'Escribe la dirección de tu web, por ejemplo mipeluqueria.es.';
 					input.focus();
 					return;
@@ -168,7 +224,7 @@ const canonical = new URL('/', Astro.site);
 				button.disabled = true;
 				form.setAttribute('aria-busy', 'true');
 				result.hidden = true;
-				status.classList.remove('status--error');
+				status.classList.add('is-busy');
 				status.textContent = `Comprobando ${url}… Suele tardar unos segundos.`;
 				try {
 					const res = await fetch('/api/diagnostico', {
@@ -181,10 +237,11 @@ const canonical = new URL('/', Astro.site);
 					status.textContent = '';
 					render(data as Respuesta);
 				} catch (err) {
-					status.classList.add('status--error');
+					status.classList.add('is-error');
 					status.textContent =
 						err instanceof TypeError ? 'No se ha podido conectar. Revisa tu conexión y vuelve a probar.' : (err as Error).message;
 				} finally {
+					status.classList.remove('is-busy');
 					button.disabled = false;
 					form.removeAttribute('aria-busy');
 				}
@@ -192,332 +249,485 @@ const canonical = new URL('/', Astro.site);
 		</script>
 
 		<style is:global>
-			:root {
-				--bg: #faf9f6;
-				--text: #171717;
-				--text-muted: #6b6b6b;
-				--accent: #f28c7a;
-				--accent-soft: #ffd6cc;
-				--surface: #fff;
-				--line: rgb(23 23 23 / 0.1);
-				--ok: #3d7a5c;
-				--gutter: clamp(1rem, 4vw, 2.5rem);
-				--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-				color-scheme: light;
-			}
-			*,
-			*::before,
-			*::after {
-				box-sizing: border-box;
-			}
-			html {
-				-webkit-text-size-adjust: 100%;
-			}
-			body {
-				margin: 0;
-				min-height: 100svh;
-				display: flex;
-				flex-direction: column;
-				background: var(--bg);
-				color: var(--text);
-				font-family: var(--font-sora), sans-serif;
-				font-weight: 300;
-				line-height: 1.6;
-				-webkit-font-smoothing: antialiased;
-			}
-			h1,
-			h2,
-			h3,
-			p,
-			ol,
-			ul {
-				margin: 0;
-			}
-			a {
-				color: inherit;
-			}
-			:focus-visible {
-				outline: 2px solid var(--accent);
-				outline-offset: 3px;
-			}
-			.sr-only {
-				position: absolute;
-				width: 1px;
-				height: 1px;
-				overflow: hidden;
-				clip: rect(0 0 0 0);
-				white-space: nowrap;
-			}
-			.label {
-				font-size: 0.72rem;
-				font-weight: 500;
-				letter-spacing: 0.16em;
-				text-transform: uppercase;
-				color: var(--text-muted);
-			}
-
-			.top,
-			main,
-			.foot {
-				width: min(100% - 2 * var(--gutter), 46rem);
-				margin-inline: auto;
-			}
-			.top {
-				display: flex;
-				justify-content: space-between;
-				align-items: baseline;
-				padding-block: 1.5rem;
-			}
-			.brand {
-				font-weight: 500;
-				text-decoration: none;
-				letter-spacing: -0.01em;
-			}
 			main {
 				flex: 1;
 			}
 
-			.intro {
-				padding-block: clamp(3rem, 12vh, 7rem) 2rem;
+			/* ---------- Entrada: como /contacto ----------
+			   Grande y breve: la página dice dónde estás de un vistazo */
+			.hero {
+				box-sizing: border-box;
+				width: var(--frame);
+				margin-inline: auto;
+				padding: calc(var(--nav-top) + var(--nav-height) + clamp(3.5rem, 12svh, 8rem)) var(--frame-pad)
+					clamp(3rem, 8svh, 5rem);
 			}
-			h1 {
-				font-size: clamp(2rem, 6vw, 3.4rem);
+
+			.hero .eyebrow {
+				margin-bottom: clamp(1rem, 2.5svh, 1.5rem);
+			}
+
+			.title {
+				max-width: 11em;
+				margin: 0;
+				font-size: clamp(2.75rem, min(5.6vw, 11svh), 5.25rem);
 				font-weight: 400;
-				line-height: 1.08;
-				letter-spacing: -0.03em;
+				line-height: 1;
+				letter-spacing: -0.04em;
 				text-wrap: balance;
 			}
+
 			.lead {
-				margin-top: 1.25rem;
-				max-width: 34rem;
-				font-size: clamp(1rem, 2.2vw, 1.15rem);
-				color: var(--text-muted);
+				max-width: 24em;
+				margin: clamp(1.75rem, 4svh, 2.5rem) 0 0;
+				font-size: clamp(1.125rem, 0.95rem + 0.5vw, 1.375rem);
+				line-height: 1.45;
+				letter-spacing: -0.01em;
+				text-wrap: pretty;
 			}
+
+			/* El campo, como los del formulario de /contacto: una línea, sin caja.
+			   El botón coral, el mismo que «Enviar solicitud». */
 			.form {
-				display: flex;
-				gap: 0.5rem;
-				margin-top: 2.5rem;
-				padding: 0.4rem;
-				background: var(--surface);
-				border: 1px solid var(--line);
-				border-radius: 999px;
-				box-shadow: 0 1px 2px rgb(23 23 23 / 0.04), 0 8px 24px -12px rgb(23 23 23 / 0.12);
-				transition: border-color 0.2s;
+				display: grid;
+				grid-template-columns: minmax(0, 1fr) auto;
+				align-items: end;
+				gap: 1.5rem;
+				max-width: 44rem;
+				margin-top: clamp(2.5rem, 6svh, 3.5rem);
 			}
-			.form:focus-within {
-				border-color: var(--accent);
+
+			.field {
+				display: grid;
+				gap: 0.35rem;
 			}
-			.form input {
-				flex: 1;
-				min-width: 0;
-				padding: 0.75rem 1rem;
-				border: 0;
-				background: transparent;
-				font: inherit;
-				font-weight: 400;
-				font-size: 1rem;
-				color: var(--text);
-			}
-			.form input:focus-visible {
-				outline: none;
-			}
-			.form input::placeholder {
-				color: rgb(23 23 23 / 0.35);
-			}
-			.form button {
-				flex: none;
-				padding: 0.75rem 1.4rem;
-				border: 0;
-				border-radius: 999px;
-				background: var(--text);
-				color: var(--bg);
-				font: inherit;
+
+			.field label {
+				font-size: 0.8125rem;
 				font-weight: 500;
-				cursor: pointer;
-				transition: transform 0.3s var(--ease-out), opacity 0.2s;
-			}
-			.form button:hover {
-				transform: translateY(-1px);
-			}
-			.form button:disabled {
-				opacity: 0.5;
-				cursor: progress;
-				transform: none;
-			}
-			.hint {
-				margin-top: 0.9rem;
-				padding-inline: 1rem;
-				font-size: 0.8rem;
+				letter-spacing: 0.01em;
 				color: var(--text-muted);
+			}
+
+			.field input {
+				width: 100%;
+				box-sizing: border-box;
+				padding: 0.5rem 0;
+				border: 0;
+				border-bottom: 1px solid rgb(var(--ink) / 0.42);
+				border-radius: 0;
+				background: transparent;
+				color: var(--text);
+				font: inherit;
+				font-size: clamp(1.25rem, 1rem + 0.8vw, 1.625rem);
+				font-weight: 400;
+				letter-spacing: -0.02em;
+				transition: border-color 0.3s var(--ease-out);
+			}
+
+			.field input::placeholder {
+				color: rgb(var(--ink) / 0.3);
+			}
+
+			.field input:focus {
+				outline: none;
+				border-bottom-color: var(--accent);
+				box-shadow: 0 1px 0 var(--accent);
+			}
+
+			.submit {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				gap: 0.5em;
+				min-height: 3.5rem;
+				padding: 0 1.75rem;
+				border: 0;
+				border-radius: 999px;
+				background: var(--accent);
+				color: var(--text);
+				font: inherit;
+				font-size: 1rem;
+				font-weight: 500;
+				text-decoration: none;
+				white-space: nowrap;
+				cursor: pointer;
+				transition: box-shadow 0.4s var(--ease-out);
+			}
+
+			.submit:hover {
+				box-shadow: 0 0 0 0.4rem var(--accent-soft);
+			}
+
+			.submit:disabled {
+				cursor: progress;
+				opacity: 0.6;
+				box-shadow: none;
+			}
+
+			.submit svg {
+				width: 0.75em;
+				height: 0.75em;
+				fill: none;
+				stroke: currentColor;
+				stroke-width: 1.4;
+				stroke-linecap: round;
+				stroke-linejoin: round;
+				transition: translate 0.3s var(--ease-out);
+			}
+
+			.submit:hover svg {
+				translate: 0.15em 0;
 			}
 
 			.status {
-				min-height: 1.6em;
-				color: var(--text-muted);
-			}
-			.status--error {
-				color: #b4452f;
-			}
-
-			.result {
-				padding-block: 2rem 4rem;
-				scroll-margin-top: 1.5rem;
-				animation: enter 0.6s var(--ease-out);
-			}
-			@keyframes enter {
-				from {
-					opacity: 0;
-					filter: blur(6px);
-					transform: translateY(8px);
-				}
-			}
-			@media (prefers-reduced-motion: reduce) {
-				.result {
-					animation: none;
-				}
-			}
-			.result-head {
-				padding-bottom: 1.5rem;
-				border-bottom: 1px solid var(--line);
-			}
-			.result-head h2 {
-				margin-top: 0.4rem;
-				font-size: clamp(1.5rem, 4vw, 2.1rem);
-				font-weight: 400;
-				letter-spacing: -0.02em;
-				overflow-wrap: anywhere;
-			}
-			.summary {
-				margin-top: 0.4rem;
-				color: var(--text-muted);
+				max-width: 44rem;
+				margin: 1.25rem 0 0;
+				font-size: 0.9375rem;
+				line-height: 1.5;
 			}
 
-			.findings {
-				list-style: none;
-				padding: 0;
-			}
-			.finding {
-				padding-block: 1.4rem;
-				border-bottom: 1px solid var(--line);
-			}
-			.finding-head {
-				display: flex;
-				align-items: baseline;
-				gap: 0.75rem;
-			}
-			.finding-head h3 {
-				font-size: 1.1rem;
-				font-weight: 500;
-				letter-spacing: -0.01em;
-			}
-			.tag {
-				flex: none;
-				min-width: 5.5rem;
-				font-size: 0.68rem;
-				font-weight: 500;
-				letter-spacing: 0.14em;
-				text-transform: uppercase;
-				color: var(--text-muted);
-			}
-			.finding--fallo .tag {
-				color: #c45a45;
-			}
-			.finding--bien .tag {
-				color: var(--ok);
-			}
-			.fact,
-			.why {
-				margin-left: 6.25rem;
-			}
-			.fact {
-				margin-top: 0.35rem;
-				font-weight: 400;
-			}
-			.why {
-				margin-top: 0.25rem;
-				color: var(--text-muted);
-				font-size: 0.95rem;
-			}
-			.finding--bien .why {
+			.status:empty {
 				display: none;
 			}
-			@media (max-width: 34rem) {
-				.finding-head {
-					flex-direction: column;
-					gap: 0.2rem;
-				}
-				.fact,
-				.why {
-					margin-left: 0;
+
+			/* Mientras comprueba: el punto coral de la marca, latiendo */
+			.status.is-busy {
+				display: flex;
+				align-items: baseline;
+				gap: 0.6rem;
+				color: var(--text-muted);
+			}
+
+			.status.is-busy::before {
+				content: "";
+				flex: none;
+				width: 0.5rem;
+				height: 0.5rem;
+				border-radius: 50%;
+				background: var(--accent);
+				animation: pulse 1.2s var(--ease-out) infinite;
+			}
+
+			.status.is-error {
+				color: var(--accent-text);
+			}
+
+			@keyframes pulse {
+				50% {
+					opacity: 0.25;
+					scale: 0.7;
 				}
 			}
 
-			.limits {
-				margin-top: 2.5rem;
+			.hint {
+				max-width: 44rem;
+				margin: 1rem 0 0;
+				font-size: 0.8125rem;
+				color: var(--text-muted);
 			}
-			.limits h3 {
-				font-size: 0.72rem;
+
+			/* ---------- Resultado: las filas de índice de la landing ----------
+			   Etiqueta en el eje, contenido en la columna del texto y una línea
+			   finísima encima */
+			.result {
+				box-sizing: border-box;
+				width: var(--frame);
+				margin-inline: auto;
+				padding: 0 var(--frame-pad);
+				scroll-margin-top: calc(var(--nav-top) + var(--nav-height) + 1rem);
+			}
+
+			.row {
+				position: relative;
+				display: grid;
+				grid-template-columns: var(--label-col) minmax(0, 1fr);
+				column-gap: var(--col-gap);
+				padding-block: clamp(2rem, 6svh, 3.5rem);
+			}
+
+			.row > .eyebrow {
+				display: flex;
+				align-items: center;
+				gap: 0.6em;
+				align-self: start;
+				padding-top: 0.6em;
+			}
+
+			.row-rule {
+				position: absolute;
+				inset: 0 0 auto;
+				height: 1px;
+				background: var(--rule);
+			}
+
+			.dot {
+				flex: none;
+				width: 0.45rem;
+				height: 0.45rem;
+				border-radius: 50%;
+			}
+
+			.dot--fallo {
+				background: var(--accent);
+			}
+
+			.dot--aviso {
+				box-shadow: inset 0 0 0 1.5px var(--accent);
+			}
+
+			.dot--neutro {
+				box-shadow: inset 0 0 0 1.5px var(--text-muted);
+			}
+
+			.dot--bien {
+				background: rgb(var(--ink) / 0.35);
+			}
+
+			.row--fallo > .eyebrow {
+				color: var(--accent-text);
+			}
+
+			.domain {
+				margin: 0;
+				font-size: clamp(2rem, 4.5vw, 3.5rem);
+				font-weight: 400;
+				line-height: 1.05;
+				letter-spacing: -0.035em;
+				overflow-wrap: anywhere;
+			}
+
+			.note {
+				margin: 0.75rem 0 0;
+				color: var(--text-muted);
+			}
+
+			/* El resumen en tres números grandes, como los del método de la
+			   auditoría. Lo que hay que arreglar, en coral. */
+			.counts {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 1rem clamp(2rem, 6vw, 4.5rem);
+				margin: clamp(1.75rem, 4svh, 2.5rem) 0 0;
+			}
+
+			.counts:empty {
+				display: none;
+			}
+
+			.count {
+				display: flex;
+				flex-direction: column-reverse;
+				gap: 0.4rem;
+			}
+
+			.count dd {
+				margin: 0;
+				font-size: clamp(3rem, 7vw, 5rem);
+				font-weight: 300;
+				line-height: 0.9;
+				letter-spacing: -0.04em;
+				font-variant-numeric: tabular-nums;
+			}
+
+			.count dt {
+				font-size: 0.8125rem;
 				font-weight: 500;
-				letter-spacing: 0.16em;
+				letter-spacing: 0.08em;
 				text-transform: uppercase;
 				color: var(--text-muted);
 			}
-			.limits ul {
-				margin-top: 0.75rem;
-				padding-left: 1.1rem;
-				color: var(--text-muted);
-				font-size: 0.92rem;
-			}
-			.limits li + li {
-				margin-top: 0.3rem;
+
+			.count--fallo dd {
+				color: var(--accent);
 			}
 
-			.cta {
-				margin-top: 3rem;
-				padding: clamp(1.5rem, 4vw, 2.25rem);
-				background: var(--accent-soft);
-				border-radius: 1.5rem;
+			.count--bien dd,
+			.count--cero dd {
+				color: rgb(var(--ink) / 0.4);
 			}
-			.cta-title {
-				font-size: clamp(1.3rem, 3.2vw, 1.7rem);
+
+			.findings,
+			.good,
+			.limits {
+				margin: 0;
+				padding: 0;
+				list-style: none;
+			}
+
+			.findings .finding + .finding {
+				margin-top: clamp(1.75rem, 4svh, 2.5rem);
+				padding-top: clamp(1.75rem, 4svh, 2.5rem);
+				border-top: 1px solid var(--rule);
+			}
+
+			.finding h3 {
+				margin: 0;
+				font-size: clamp(1.25rem, 1rem + 0.8vw, 1.625rem);
 				font-weight: 400;
 				line-height: 1.2;
 				letter-spacing: -0.02em;
 			}
-			.cta p + p {
-				margin-top: 0.75rem;
-				max-width: 34rem;
-			}
-			.cta-link {
-				display: inline-flex;
-				gap: 0.4rem;
-				margin-top: 1.25rem;
-				font-weight: 500;
-				text-decoration: underline;
-				text-decoration-thickness: 1px;
-				text-underline-offset: 0.3em;
-			}
-			.cta-link span {
-				transition: transform 0.3s var(--ease-out);
-			}
-			.cta-link:hover span {
-				transform: translateX(3px);
+
+			.fact {
+				max-width: 34em;
+				margin: 0.6rem 0 0;
+				font-size: 1.0625rem;
+				line-height: 1.5;
 			}
 
-			.foot {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 0.5rem 1.5rem;
-				padding-block: 2rem;
-				border-top: 1px solid var(--line);
-				font-size: 0.8rem;
+			.why {
+				max-width: 34em;
+				margin: 0.4rem 0 0;
+				font-size: 1rem;
+				line-height: 1.55;
+				color: var(--text-muted);
+				text-wrap: pretty;
+			}
+
+			/* Lo que está bien: una línea por cosa, sin explicación */
+			.good .finding {
+				display: grid;
+				grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
+				gap: 0.25rem 1.5rem;
+				padding-block: 0.6rem;
+			}
+
+			.good .finding + .finding {
+				border-top: 1px solid var(--rule);
+			}
+
+			.good-title {
+				font-weight: 500;
+			}
+
+			.good-fact {
 				color: var(--text-muted);
 			}
-			.foot a {
-				text-decoration: none;
+
+			.limits li {
+				position: relative;
+				max-width: 36em;
+				padding-left: 1.25rem;
+				line-height: 1.55;
+				color: var(--text-muted);
 			}
-			.foot a:hover {
-				color: var(--text);
+
+			.limits li + li {
+				margin-top: 0.5rem;
+			}
+
+			.limits li::before {
+				content: "";
+				position: absolute;
+				left: 0;
+				top: 0.75em;
+				width: 0.5rem;
+				height: 1px;
+				background: currentColor;
+			}
+
+			.next-title {
+				margin: 0;
+				font-size: clamp(1.75rem, 3.5vw, 2.75rem);
+				font-weight: 400;
+				line-height: 1.1;
+				letter-spacing: -0.035em;
+				text-wrap: balance;
+			}
+
+			.next-text {
+				max-width: 30em;
+				margin: 1rem 0 clamp(1.75rem, 4svh, 2.25rem);
+				font-size: 1.0625rem;
+				line-height: 1.55;
+				color: var(--text-muted);
+				text-wrap: pretty;
+			}
+
+			/* ---------- Móvil: una columna ---------- */
+			@media (max-width: 48rem), (orientation: portrait) and (max-width: 75rem) {
+				.hero {
+					padding-top: calc(var(--nav-top) + var(--nav-height) + clamp(2.5rem, 7svh, 4rem));
+				}
+
+				.title {
+					font-size: clamp(2.75rem, 12vw, 4.5rem);
+				}
+
+				.row {
+					grid-template-columns: 1fr;
+					row-gap: 1rem;
+				}
+
+				.row > .eyebrow {
+					padding-top: 0;
+				}
+			}
+
+			@media (max-width: 34rem) {
+				.form {
+					grid-template-columns: 1fr;
+					gap: 1.25rem;
+				}
+
+				.form .submit {
+					justify-self: start;
+				}
+
+				.good .finding {
+					grid-template-columns: 1fr;
+				}
+			}
+
+			/* ---------- Entradas, como en /contacto ---------- */
+			@media (prefers-reduced-motion: no-preference) {
+				.title {
+					animation: focus-in 0.9s var(--ease-out) 0.05s both;
+				}
+
+				.hero .eyebrow,
+				.lead {
+					animation: rise-in 0.8s var(--ease-out) 0.2s both;
+				}
+
+				.form,
+				.hint {
+					animation: rise-in 0.8s var(--ease-out) 0.35s both;
+				}
+
+				/* El resultado entra como una observación que se confirma: de
+				   desenfocado a enfocado, fila a fila */
+				.result:not([hidden]) .row {
+					animation: focus-in 0.8s var(--ease-out) both;
+				}
+
+				.result .row:nth-child(2) {
+					animation-delay: 0.08s;
+				}
+
+				.result .row:nth-child(3) {
+					animation-delay: 0.16s;
+				}
+
+				.result .row:nth-child(n + 4) {
+					animation-delay: 0.24s;
+				}
+			}
+
+			@keyframes focus-in {
+				from {
+					opacity: 0;
+					filter: blur(10px);
+					translate: 0 0.4rem;
+				}
+			}
+
+			@keyframes rise-in {
+				from {
+					opacity: 0;
+					translate: 0 0.6rem;
+				}
 			}
 		</style>
 	</body>
