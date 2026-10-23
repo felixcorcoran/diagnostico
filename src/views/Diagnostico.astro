@@ -1,5 +1,6 @@
 ---
 import { Font } from 'astro:assets';
+import Analytics from '@vercel/analytics/astro';
 import Navbar from '../components/Navbar.astro';
 import Footer from '../components/Footer.astro';
 import { paths, site as siteFor } from '../data/site';
@@ -55,6 +56,9 @@ const canonical = new URL(paths[lang], Astro.site);
 		<meta property="og:url" content={canonical} />
 		<meta property="og:locale" content={t.locale} />
 		<Font cssVariable="--font-sora" preload />
+		<!-- Visitas (Vercel Web Analytics: sin cookies). La dirección que se
+		     comprueba nunca llega aquí: va en el cuerpo de la petición a la API -->
+		<Analytics />
 	</head>
 	<body class="is-idle">
 		<Navbar lang={lang} />

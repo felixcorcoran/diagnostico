@@ -253,7 +253,7 @@ const t = textos[lang].nav;
 	for (const button of document.querySelectorAll<HTMLButtonElement>('[data-theme-toggle]')) {
 		const sync = () => button.setAttribute('aria-pressed', String(isDark()));
 		sync();
-		button.addEventListener('click', () => {
+		const toggle = () => {
 			const dark = !isDark();
 			if (dark) root.dataset.theme = 'dark';
 			else delete root.dataset.theme;
@@ -263,6 +263,26 @@ const t = textos[lang].nav;
 				else localStorage.removeItem('tema');
 			} catch {}
 			sync();
+		};
+		button.addEventListener('click', () => reveal(button, toggle));
+	}
+
+	/**
+	 * El tema nuevo se abre en círculo desde la luna hasta cubrir la pantalla,
+	 * como en felixcorcoran.es (View Transitions). Sin soporte o con
+	 * movimiento reducido, el cambio es directo.
+	 */
+	function reveal(from: HTMLElement, change: () => void) {
+		if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) return change();
+		const { left, top, width, height } = from.getBoundingClientRect();
+		const x = left + width / 2;
+		const y = top + height / 2;
+		const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+		document.startViewTransition(change).ready.then(() => {
+			root.animate(
+				{ clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+				{ duration: 700, easing: 'cubic-bezier(0.65, 0, 0.35, 1)', pseudoElement: '::view-transition-new(root)' },
+			);
 		});
 	}
 

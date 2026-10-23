@@ -126,3 +126,12 @@ body::before {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* Cambio de tema (botón de la luna, Navbar.astro): sin el fundido por
+   defecto; el tema nuevo entra encima del anterior, recortado en un círculo
+   que crece desde la luna */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
