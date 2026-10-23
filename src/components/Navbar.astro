@@ -1,18 +1,24 @@
 ---
-import { site } from '../data/site';
+import { site as siteFor } from '../data/site';
+import { textos } from '../data/textos';
+import type { Lang } from '../data/senales';
+
+const { lang } = Astro.props as { lang: Lang };
+const site = siteFor(lang);
+const t = textos[lang].nav;
 ---
 
 <!-- La misma píldora que felixcorcoran.es (src/components/Navbar.astro de la
      landing): logo, tema, Trabajo y Contacto. Aquí todos los enlaces llevan
      a la web principal. -->
 <header class="nav">
-	<nav class="pill" aria-label="Principal">
-		<a class="logo" href={site.home} aria-label="felixcorcoran — inicio" data-site-link>
+	<nav class="pill" aria-label={t.label}>
+		<a class="logo" href={site.home} aria-label={t.home} data-site-link>
 			<span class="logo-first">felix</span><span class="logo-last">corcoran</span>
 		</a>
 		<ul class="links">
 			<li class="theme-item">
-				<button class="theme" type="button" aria-pressed="false" aria-label="Modo oscuro" title="Modo oscuro" data-theme-toggle>
+				<button class="theme" type="button" aria-pressed="false" aria-label={t.dark} title={t.dark} data-theme-toggle>
 					<svg class="moon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
 						<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"></path>
 					</svg>
@@ -22,8 +28,8 @@ import { site } from '../data/site';
 					</svg>
 				</button>
 			</li>
-			<li><a href={site.work} data-site-link>Trabajo</a></li>
-			<li><a class="highlight" href={site.contact} data-site-link>Contacto</a></li>
+			<li><a href={site.work} data-site-link>{t.work}</a></li>
+			<li><a class="highlight" href={site.contact} data-site-link>{t.contact}</a></li>
 		</ul>
 	</nav>
 </header>

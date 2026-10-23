@@ -1,0 +1,648 @@
+---
+import { Font } from 'astro:assets';
+import Navbar from '../components/Navbar.astro';
+import Footer from '../components/Footer.astro';
+import { paths, site as siteFor } from '../data/site';
+import { textos } from '../data/textos';
+import type { Lang } from '../data/senales';
+import '../styles/global.css';
+
+// La herramienta, en los dos idiomas: / y /en
+const { lang } = Astro.props as { lang: Lang };
+const t = textos[lang];
+const site = siteFor(lang);
+const canonical = new URL(paths[lang], Astro.site);
+---
+
+<!doctype html>
+<html lang={lang}>
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>{t.title}</title>
+		<meta name="description" content={t.description} />
+		<link rel="canonical" href={canonical} />
+		<link rel="alternate" hreflang="es" href={new URL(paths.es, Astro.site)} />
+		<link rel="alternate" hreflang="en" href={new URL(paths.en, Astro.site)} />
+		<link rel="alternate" hreflang="x-default" href={new URL(paths.es, Astro.site)} />
+		<meta name="theme-color" content="#FAF9F6" data-theme-color />
+		<!-- Claro por defecto, como felixcorcoran.es. Oscuro si se pidió al
+		     llegar desde allí (?tema=oscuro, que se recuerda y se quita de la
+		     barra) o si se eligió aquí antes. Va antes de pintar: sin destello. -->
+		<script is:inline>
+			try {
+				const url = new URL(location.href);
+				const asked = url.searchParams.get('tema');
+				if (asked === 'oscuro') localStorage.setItem('tema', 'oscuro');
+				if (asked === 'claro') localStorage.removeItem('tema');
+				if (asked) {
+					url.searchParams.delete('tema');
+					history.replaceState(null, '', url.pathname + url.search + url.hash);
+				}
+				if (asked === 'oscuro' || (!asked && localStorage.getItem('tema') === 'oscuro')) {
+					document.documentElement.dataset.theme = 'dark';
+					document.querySelector('[data-theme-color]')?.setAttribute('content', '#131211');
+				}
+			} catch {
+				if (location.search.includes('tema=oscuro')) document.documentElement.dataset.theme = 'dark';
+			}
+		</script>
+		<link rel="icon" type="image/png" sizes="96x96" href="/favicon.png" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<meta property="og:type" content="website" />
+		<meta property="og:title" content={t.title} />
+		<meta property="og:description" content={t.description} />
+		<meta property="og:url" content={canonical} />
+		<meta property="og:locale" content={t.locale} />
+		<Font cssVariable="--font-sora" preload />
+	</head>
+	<body class="is-idle">
+		<Navbar lang={lang} />
+
+		<main>
+			<section class="intro">
+				<h1>{t.heading}</h1>
+				<p class="lead">{t.lead}</p>
+
+				<form id="form" class="form" novalidate>
+					<label class="sr-only" for="url">{t.inputLabel}</label>
+					<input
+						id="url"
+						name="url"
+						type="text"
+						inputmode="url"
+						autocomplete="url"
+						autocapitalize="off"
+						spellcheck="false"
+						placeholder={t.placeholder}
+						required
+					/>
+					<button type="submit" id="submit">{t.submit}</button>
+				</form>
+				<p class="hint">{t.hint}</p>
+			</section>
+
+			<p id="status" class="status" role="status" aria-live="polite"></p>
+
+			<section id="result" class="result" aria-labelledby="result-title" hidden>
+				<div class="result-head">
+					<p class="label">{t.result}</p>
+					<h2 id="result-title"></h2>
+					<p id="result-summary" class="summary"></p>
+				</div>
+				<ol id="findings" class="findings"></ol>
+
+				<div class="limits">
+					<h3>{t.limits}</h3>
+					<ul id="limits"></ul>
+				</div>
+
+				<div class="cta">
+					<p class="cta-title">{t.ctaTitle}</p>
+					<p>{t.ctaText}</p>
+					<a class="cta-link" href={site.contact} data-site-link>{t.ctaLink} <span aria-hidden="true">→</span></a>
+				</div>
+			</section>
+		</main>
+
+		<Footer lang={lang} />
+
+		<script type="application/json" id="textos" set:html={JSON.stringify({ lang, ...t.client })} />
+
+		<script>
+			import type { ClientTexts } from '../data/textos';
+
+			type Nivel = 'fallo' | 'aviso' | 'bien' | 'neutro';
+			interface Hallazgo {
+				senal: string;
+				nivel: Nivel;
+				titulo: string;
+				porQue: string;
+				hecho: string;
+			}
+			interface Respuesta {
+				url: string;
+				finalUrl: string | null;
+				estado: 'ok' | 'down' | 'unverified' | 'blocked';
+				hallazgos: Hallazgo[];
+				noComprobado: string[];
+			}
+
+			const t = JSON.parse(document.querySelector('#textos')!.textContent!) as ClientTexts & { lang: 'es' | 'en' };
+			const form = document.querySelector<HTMLFormElement>('#form')!;
+			const input = document.querySelector<HTMLInputElement>('#url')!;
+			const button = document.querySelector<HTMLButtonElement>('#submit')!;
+			const status = document.querySelector<HTMLParagraphElement>('#status')!;
+			const result = document.querySelector<HTMLElement>('#result')!;
+
+			const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string) => {
+				const node = document.createElement(tag);
+				if (className) node.className = className;
+				if (text) node.textContent = text;
+				return node;
+			};
+
+			const plural = (n: number, [one, many]: readonly string[]) => `${n} ${n === 1 ? one : many}`;
+
+			// El resumen en una línea; lo que hay que arreglar, en coral
+			function summary(data: Respuesta): Node[] {
+				if (data.estado === 'down') return [document.createTextNode(t.down)];
+				if (data.estado === 'unverified' || data.estado === 'blocked') return [document.createTextNode(t.unread)];
+				const count = (n: Nivel) => data.hallazgos.filter((h) => h.nivel === n).length;
+				const fixes = count('fallo');
+				const reviews = count('aviso');
+				const parts: Node[] = [fixes ? el('strong', 'summary-fix', plural(fixes, t.fix)) : document.createTextNode(t.nothing)];
+				if (reviews) parts.push(document.createTextNode(` · ${plural(reviews, t.review)}`));
+				parts.push(document.createTextNode(` · ${plural(count('bien'), t.good)}`));
+				return parts;
+			}
+
+			function render(data: Respuesta) {
+				document.querySelector('#result-title')!.textContent = new URL(data.finalUrl ?? data.url).hostname.replace(/^www\./, '');
+				document.querySelector('#result-summary')!.replaceChildren(...summary(data));
+
+				document.querySelector('#findings')!.replaceChildren(
+					...data.hallazgos.map((h) => {
+						const item = el('li', `finding finding--${h.nivel}`);
+						const head = el('div', 'finding-head');
+						const tag = el('span', 'tag');
+						tag.append(el('span', 'dot'), t.tags[h.nivel]);
+						head.append(tag, el('h3', '', h.titulo));
+						item.append(head, el('p', 'fact', h.hecho), el('p', 'why', h.porQue));
+						return item;
+					}),
+				);
+				document.querySelector('#limits')!.replaceChildren(...data.noComprobado.map((text) => el('li', '', text)));
+
+				document.body.classList.remove('is-idle');
+				result.hidden = false;
+				result.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+			}
+
+			form.addEventListener('submit', async (event) => {
+				event.preventDefault();
+				const url = input.value.trim();
+				status.classList.remove('is-busy', 'is-error');
+				if (!url) {
+					status.classList.add('is-error');
+					status.textContent = t.empty;
+					input.focus();
+					return;
+				}
+				button.disabled = true;
+				form.setAttribute('aria-busy', 'true');
+				result.hidden = true;
+				document.body.classList.add('is-idle');
+				status.classList.add('is-busy');
+				status.textContent = t.checking.replace('{url}', url);
+				try {
+					const res = await fetch('/api/diagnostico', {
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({ url, lang: t.lang }),
+					});
+					const data = await res.json();
+					if (!res.ok) throw new Error(data.error ?? t.failed);
+					status.textContent = '';
+					render(data as Respuesta);
+				} catch (err) {
+					status.classList.add('is-error');
+					status.textContent = err instanceof TypeError ? t.offline : (err as Error).message;
+				} finally {
+					status.classList.remove('is-busy');
+					button.disabled = false;
+					form.removeAttribute('aria-busy');
+				}
+			});
+		</script>
+
+		<style is:global>
+			/* ---------- La página: una columna de lectura ----------
+			   Al entrar cabe en una pantalla, sin scroll: la píldora arriba, la
+			   pregunta en el centro y el pie abajo. Con el resultado, crece. */
+			main {
+				box-sizing: border-box;
+				flex: 1;
+				width: min(100% - 2 * var(--gutter), 46rem);
+				margin-inline: auto;
+				padding-top: calc(var(--nav-top) + var(--nav-height) + clamp(2rem, 8svh, 5rem));
+			}
+
+			.is-idle main {
+				display: flex;
+				flex-direction: column;
+				justify-content: center;
+				padding-bottom: clamp(2rem, 6svh, 4rem);
+			}
+
+			.intro h1 {
+				margin: 0;
+				font-size: clamp(2rem, 6vw, 3.4rem);
+				font-weight: 400;
+				line-height: 1.08;
+				letter-spacing: -0.03em;
+				text-wrap: balance;
+			}
+
+			.lead {
+				max-width: 34rem;
+				margin: 1.25rem 0 0;
+				font-size: clamp(1rem, 2.2vw, 1.15rem);
+				line-height: 1.6;
+				font-weight: 300;
+				color: var(--text-muted);
+			}
+
+			/* El campo: una píldora con el botón coral dentro */
+			.form {
+				display: flex;
+				gap: 0.5rem;
+				margin-top: clamp(1.75rem, 5svh, 2.5rem);
+				padding: 0.4rem;
+				background: var(--surface);
+				border: 1px solid rgb(var(--ink) / 0.1);
+				border-radius: 999px;
+				box-shadow:
+					0 1px 2px rgb(var(--ink) / 0.04),
+					0 8px 24px -12px rgb(var(--ink) / 0.14);
+				transition:
+					border-color 0.2s,
+					box-shadow 0.3s var(--ease-out);
+			}
+
+			.form:focus-within {
+				border-color: var(--accent);
+				box-shadow:
+					0 0 0 0.25rem rgb(242 140 122 / 0.18),
+					0 8px 24px -12px rgb(var(--ink) / 0.14);
+			}
+
+			.form input {
+				flex: 1;
+				min-width: 0;
+				padding: 0.75rem 1rem;
+				border: 0;
+				background: transparent;
+				font: inherit;
+				font-weight: 400;
+				font-size: 1rem;
+				color: var(--text);
+			}
+
+			.form input:focus-visible {
+				outline: none;
+			}
+
+			.form input::placeholder {
+				color: rgb(var(--ink) / 0.35);
+			}
+
+			.form button {
+				flex: none;
+				padding: 0.75rem 1.4rem;
+				border: 0;
+				border-radius: 999px;
+				background: var(--accent);
+				color: #171717;
+				font: inherit;
+				font-weight: 500;
+				cursor: pointer;
+				transition:
+					transform 0.3s var(--ease-out),
+					opacity 0.2s,
+					box-shadow 0.3s var(--ease-out);
+			}
+
+			.form button:hover {
+				transform: translateY(-1px);
+				box-shadow: 0 6px 16px -6px rgb(242 140 122 / 0.7);
+			}
+
+			.form button:disabled {
+				opacity: 0.55;
+				cursor: progress;
+				transform: none;
+				box-shadow: none;
+			}
+
+			.hint {
+				margin: 0.9rem 0 0;
+				padding-inline: 1rem;
+				font-size: 0.8rem;
+				font-weight: 300;
+				color: var(--text-muted);
+			}
+
+			.status {
+				margin: 1.25rem 0 0;
+				padding-inline: 1rem;
+				font-weight: 300;
+				color: var(--text-muted);
+			}
+
+			.status:empty {
+				display: none;
+			}
+
+			/* Mientras comprueba: el punto coral de la marca, latiendo */
+			.status.is-busy {
+				display: flex;
+				align-items: baseline;
+				gap: 0.6rem;
+			}
+
+			.status.is-busy::before {
+				content: "";
+				flex: none;
+				width: 0.5rem;
+				height: 0.5rem;
+				border-radius: 50%;
+				background: var(--accent);
+				animation: pulse 1.2s var(--ease-out) infinite;
+			}
+
+			.status.is-error {
+				color: var(--accent-text);
+			}
+
+			@keyframes pulse {
+				50% {
+					opacity: 0.25;
+					scale: 0.7;
+				}
+			}
+
+			.label,
+			.limits h3 {
+				margin: 0;
+				font-size: 0.72rem;
+				font-weight: 500;
+				letter-spacing: 0.16em;
+				text-transform: uppercase;
+				color: var(--text-muted);
+			}
+
+			/* ---------- El resultado ---------- */
+			.result {
+				padding-block: 2rem 4rem;
+				scroll-margin-top: calc(var(--nav-top) + var(--nav-height) + 1rem);
+			}
+
+			@media (prefers-reduced-motion: no-preference) {
+				.result {
+					animation: enter 0.6s var(--ease-out);
+				}
+			}
+
+			@keyframes enter {
+				from {
+					opacity: 0;
+					filter: blur(6px);
+					transform: translateY(8px);
+				}
+			}
+
+			.result-head {
+				padding-bottom: 1.5rem;
+				border-bottom: 1px solid var(--rule);
+			}
+
+			/* Un trazo coral corto encima del rótulo: el acento de la sección */
+			.result-head .label::before {
+				content: "";
+				display: block;
+				width: 1.5rem;
+				height: 2px;
+				margin-bottom: 0.9rem;
+				border-radius: 2px;
+				background: var(--accent);
+			}
+
+			.result-head h2 {
+				margin: 0.4rem 0 0;
+				font-size: clamp(1.5rem, 4vw, 2.1rem);
+				font-weight: 400;
+				letter-spacing: -0.02em;
+				overflow-wrap: anywhere;
+			}
+
+			.summary {
+				margin: 0.4rem 0 0;
+				font-weight: 300;
+				color: var(--text-muted);
+			}
+
+			.summary-fix {
+				font-weight: 500;
+				color: var(--accent-text);
+			}
+
+			.findings {
+				margin: 0;
+				padding: 0;
+				list-style: none;
+			}
+
+			.finding {
+				padding-block: 1.4rem;
+				border-bottom: 1px solid var(--rule);
+			}
+
+			.finding-head {
+				display: flex;
+				align-items: baseline;
+				gap: 0.75rem;
+			}
+
+			.finding-head h3 {
+				margin: 0;
+				font-size: 1.1rem;
+				font-weight: 500;
+				letter-spacing: -0.01em;
+			}
+
+			.tag {
+				flex: none;
+				display: inline-flex;
+				align-items: center;
+				gap: 0.45rem;
+				min-width: 5.5rem;
+				font-size: 0.68rem;
+				font-weight: 500;
+				letter-spacing: 0.14em;
+				text-transform: uppercase;
+				color: var(--text-muted);
+			}
+
+			.dot {
+				flex: none;
+				width: 0.4rem;
+				height: 0.4rem;
+				border-radius: 50%;
+				box-shadow: inset 0 0 0 1.5px currentColor;
+			}
+
+			/* Arreglar: coral lleno. Revisar: anillo coral. Bien: punto gris. */
+			.finding--fallo .tag {
+				color: var(--accent-text);
+			}
+
+			.finding--fallo .dot {
+				background: var(--accent);
+				box-shadow: none;
+			}
+
+			.finding--aviso .dot {
+				box-shadow: inset 0 0 0 1.5px var(--accent);
+			}
+
+			.finding--bien .dot {
+				background: currentColor;
+				box-shadow: none;
+				opacity: 0.5;
+			}
+
+			.fact,
+			.why {
+				margin: 0 0 0 6.25rem;
+			}
+
+			.fact {
+				margin-top: 0.35rem;
+				font-weight: 400;
+				line-height: 1.55;
+			}
+
+			.why {
+				margin-top: 0.25rem;
+				font-size: 0.95rem;
+				font-weight: 300;
+				line-height: 1.6;
+				color: var(--text-muted);
+			}
+
+			.finding--bien .why {
+				display: none;
+			}
+
+			.limits {
+				margin-top: 2.5rem;
+			}
+
+			.limits ul {
+				margin: 0.75rem 0 0;
+				padding-left: 1.1rem;
+				font-size: 0.92rem;
+				font-weight: 300;
+				line-height: 1.6;
+				color: var(--text-muted);
+			}
+
+			.limits li + li {
+				margin-top: 0.3rem;
+			}
+
+			.limits li::marker {
+				color: var(--accent);
+			}
+
+			/* El cierre: el melocotón de la marca, con el enlace subrayado en coral */
+			.cta {
+				margin-top: 3rem;
+				padding: clamp(1.5rem, 4vw, 2.25rem);
+				background: var(--accent-soft);
+				border-radius: 1.5rem;
+			}
+
+			.cta p {
+				margin: 0;
+			}
+
+			.cta-title {
+				font-size: clamp(1.3rem, 3.2vw, 1.7rem);
+				font-weight: 400;
+				line-height: 1.2;
+				letter-spacing: -0.02em;
+			}
+
+			.cta p + p {
+				max-width: 34rem;
+				margin-top: 0.75rem;
+				font-weight: 300;
+				line-height: 1.6;
+			}
+
+			.cta-link {
+				display: inline-flex;
+				gap: 0.4rem;
+				margin-top: 1.25rem;
+				color: var(--text);
+				font-weight: 500;
+				text-decoration: underline;
+				text-decoration-color: var(--accent);
+				text-decoration-thickness: 2px;
+				text-underline-offset: 0.3em;
+			}
+
+			.cta-link span {
+				color: var(--accent-text);
+				transition: transform 0.3s var(--ease-out);
+			}
+
+			.cta-link:hover span {
+				transform: translateX(3px);
+			}
+
+			/* En oscuro, el melocotón sería un bloque marrón: un velo coral con borde */
+			:root[data-theme="dark"] .cta {
+				background: rgb(242 140 122 / 0.1);
+				box-shadow: inset 0 0 0 1px rgb(242 140 122 / 0.25);
+			}
+
+			@media (max-width: 34rem) {
+				.finding-head {
+					flex-direction: column;
+					gap: 0.2rem;
+				}
+
+				.fact,
+				.why {
+					margin-left: 0;
+				}
+			}
+
+			@media (max-width: 24rem) {
+				.form button {
+					padding-inline: 1rem;
+				}
+			}
+
+			@media (prefers-reduced-motion: no-preference) {
+				.intro h1 {
+					animation: focus-in 0.9s var(--ease-out) 0.05s both;
+				}
+
+				.lead,
+				.form,
+				.hint {
+					animation: rise-in 0.8s var(--ease-out) 0.2s both;
+				}
+			}
+
+			@keyframes focus-in {
+				from {
+					opacity: 0;
+					filter: blur(10px);
+					translate: 0 0.4rem;
+				}
+			}
+
+			@keyframes rise-in {
+				from {
+					opacity: 0;
+					translate: 0 0.6rem;
+				}
+			}
+		</style>
+	</body>
+</html>

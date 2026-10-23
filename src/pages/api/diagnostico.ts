@@ -1,13 +1,13 @@
 /**
- * POST /api/diagnostico  { url: string }
+ * POST /api/diagnostico  { url: string, lang?: 'es' | 'en' }
  *
- * Devuelve los hechos comprobados de la portada, ya con su explicación. La
- * dirección no se guarda ni se escribe en los logs.
+ * Devuelve los hechos comprobados de la portada, ya con sus textos en el
+ * idioma pedido. La dirección no se guarda ni se escribe en los logs.
  */
 
 import type { APIRoute } from 'astro';
-import { inspect, normalizeInput, InputError } from '../../lib/inspect.ts';
-import { senales, noComprobado, type Nivel } from '../../data/senales.ts';
+import { inspect, normalizeInput, InputError, type Inspection } from '../../lib/inspect.ts';
+import { describe, errores, noComprobado, type Lang } from '../../data/senales.ts';
 
 export const prerender = false;
 
@@ -34,65 +34,63 @@ function limited(ip: string): boolean {
 	return false;
 }
 
-/** La misma web pedida dos veces seguidas no se vuelve a visitar */
+/**
+ * La misma web pedida dos veces seguidas no se vuelve a visitar. Se guarda la
+ * comprobación, no la respuesta: así sirve para los dos idiomas.
+ */
 const CACHE_MS = 10 * 60_000;
-const cache = new Map<string, { at: number; body: string }>();
-
-const ORDER: Record<Nivel, number> = { fallo: 0, aviso: 1, neutro: 2, bien: 3 };
+const cache = new Map<string, { at: number; result: Inspection }>();
 
 const json = (status: number, data: unknown, headers: Record<string, string> = {}) =>
-	new Response(typeof data === 'string' ? data : JSON.stringify(data), {
+	new Response(JSON.stringify(data), {
 		status,
 		headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers },
 	});
 
+function respond(result: Inspection, lang: Lang) {
+	return json(200, {
+		url: result.url,
+		finalUrl: result.finalUrl,
+		comprobadoEl: result.checkedAt,
+		estado: result.outcome,
+		hallazgos: describe(result.evidence, lang),
+		noComprobado: noComprobado[lang],
+	});
+}
+
 export const POST: APIRoute = async ({ request, clientAddress }) => {
-	let raw: unknown;
+	let body: { url?: unknown; lang?: unknown };
 	try {
-		raw = ((await request.json()) as { url?: unknown }).url;
+		body = await request.json();
 	} catch {
-		return json(400, { error: 'Escribe la dirección de una web.' });
+		body = {};
 	}
-	if (typeof raw !== 'string') return json(400, { error: 'Escribe la dirección de una web.' });
+	const lang: Lang = body.lang === 'en' ? 'en' : 'es';
+	if (typeof body.url !== 'string') return json(400, { error: errores[lang].empty });
 
 	let url: URL;
 	try {
-		url = normalizeInput(raw);
+		url = normalizeInput(body.url);
 	} catch (err) {
-		if (err instanceof InputError) return json(400, { error: err.message });
+		if (err instanceof InputError) return json(400, { error: errores[lang][err.code] });
 		throw err;
 	}
 
 	const key = url.href.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '').toLowerCase();
 	const hit = cache.get(key);
-	if (hit && Date.now() - hit.at < CACHE_MS) return json(200, hit.body);
+	if (hit && Date.now() - hit.at < CACHE_MS) return respond(hit.result, lang);
 
 	const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || clientAddress || 'desconocida';
-	if (limited(ip)) {
-		return json(429, { error: 'Has hecho varias comprobaciones seguidas. Espera unos minutos y vuelve a probar.' }, { 'retry-after': '600' });
-	}
+	if (limited(ip)) return json(429, { error: errores[lang].rate }, { 'retry-after': '600' });
 
 	try {
 		const result = await inspect(url);
-		const hallazgos = result.evidence
-			.filter((e) => e.signal in senales)
-			.map((e) => ({ senal: e.signal, ...senales[e.signal], hecho: e.fact, detalle: e.detail ?? null }))
-			.sort((a, b) => ORDER[a.nivel] - ORDER[b.nivel]);
-		const body = JSON.stringify({
-			url: result.url,
-			finalUrl: result.finalUrl,
-			titulo: result.title,
-			comprobadoEl: result.checkedAt,
-			estado: result.outcome,
-			hallazgos,
-			noComprobado,
-		});
 		// «No se ha podido comprobar» no se guarda: volver a probar tiene que volver a mirar
-		if (result.outcome !== 'unverified') cache.set(key, { at: Date.now(), body });
-		return json(200, body);
+		if (result.outcome !== 'unverified') cache.set(key, { at: Date.now(), result });
+		return respond(result, lang);
 	} catch (err) {
-		if (err instanceof InputError) return json(400, { error: err.message });
+		if (err instanceof InputError) return json(400, { error: errores[lang][err.code] });
 		console.error('diagnostico: fallo inesperado', (err as Error).name, (err as Error).message);
-		return json(500, { error: 'Algo ha fallado al hacer la comprobación. Vuelve a probar en un momento.' });
+		return json(500, { error: errores[lang].server });
 	}
 };

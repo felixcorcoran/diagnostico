@@ -13,8 +13,8 @@ import { fetchPage, isAllowedUrl, type FetchError, type FetchResult } from './ht
 export interface Evidence {
 	/** Identificador estable de la señal (src/data/senales.ts) */
 	signal: string;
-	/** El hecho, en una frase */
-	fact: string;
+	/** Los datos del hecho (teléfono, año, dominio…): el texto, en cada idioma, lo pone src/data/senales.ts */
+	vars?: Record<string, string>;
 	/** Cita literal o resultado técnico */
 	detail?: string;
 }
@@ -51,8 +51,16 @@ export interface Inspection {
 	evidence: Evidence[];
 }
 
-/** Lo que la persona ha escrito no es una web que se pueda comprobar */
-export class InputError extends Error {}
+/** Lo que la persona ha escrito no es una web que se pueda comprobar. El mensaje, en cada idioma, en src/data/senales.ts */
+export type InputErrorCode = 'empty' | 'invalid' | 'not_public' | 'social' | 'booking' | 'whatsapp';
+
+export class InputError extends Error {
+	code: InputErrorCode;
+	constructor(code: InputErrorCode) {
+		super(code);
+		this.code = code;
+	}
+}
 
 const SOCIAL = ['instagram.com', 'facebook.com', 'fb.com', 'fb.me', 'tiktok.com', 'linktr.ee', 'x.com', 'twitter.com', 'youtube.com'];
 const BOOKING = [
@@ -88,18 +96,18 @@ const matchesDomain = (host: string, list: string[]) => list.some((d) => host ==
  */
 export function normalizeInput(raw: string): URL {
 	const text = raw.trim();
-	if (!text || text.length > 300 || /\s/.test(text)) throw new InputError('Escribe la dirección de una web, por ejemplo mipeluqueria.es.');
+	if (!text || text.length > 300 || /\s/.test(text)) throw new InputError('empty');
 	let url: URL;
 	try {
 		url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `https://${text}`);
 	} catch {
-		throw new InputError('Esa dirección no parece una web. Prueba con algo como mipeluqueria.es.');
+		throw new InputError('invalid');
 	}
-	if (!isAllowedUrl(url)) throw new InputError('Esa dirección no es una web pública.');
+	if (!isAllowedUrl(url)) throw new InputError('not_public');
 	const host = url.hostname.toLowerCase().replace(/^www\./, '');
-	if (matchesDomain(host, SOCIAL)) throw new InputError('Eso es un perfil de red social. Esta herramienta comprueba webs propias.');
-	if (matchesDomain(host, BOOKING)) throw new InputError('Eso es una plataforma de reservas. Esta herramienta comprueba webs propias.');
-	if (matchesDomain(host, WHATSAPP)) throw new InputError('Eso es un enlace de WhatsApp. Esta herramienta comprueba webs propias.');
+	if (matchesDomain(host, SOCIAL)) throw new InputError('social');
+	if (matchesDomain(host, BOOKING)) throw new InputError('booking');
+	if (matchesDomain(host, WHATSAPP)) throw new InputError('whatsapp');
 	url.hash = '';
 	return url;
 }
@@ -151,7 +159,6 @@ export async function inspect(input: URL): Promise<Inspection> {
 	if (/(^|\.)(negocio|business)\.site$/.test(input.hostname)) {
 		result.evidence.push({
 			signal: 'web_negocio_site',
-			fact: 'La web está en negocio.site, un servicio de Google que cerró en 2024.',
 			detail: url,
 		});
 	}
@@ -170,7 +177,7 @@ export async function inspect(input: URL): Promise<Inspection> {
 	}
 
 	if (!res.ok && res.failure === 'blocked-address') {
-		throw new InputError('Esa dirección no es una web pública.');
+		throw new InputError('not_public');
 	}
 
 	if (!res.ok && res.failure !== 'tls') {
@@ -185,7 +192,6 @@ export async function inspect(input: URL): Promise<Inspection> {
 			result.outcome = 'unverified';
 			result.evidence.push({
 				signal: 'web_no_comprobable',
-				fact: 'No se ha podido abrir la web desde aquí, aunque el dominio existe.',
 				detail: res.detail,
 			});
 			return result;
@@ -194,13 +200,9 @@ export async function inspect(input: URL): Promise<Inspection> {
 	if (!res.ok) {
 		result.outcome = 'down';
 		const failure = res.failure as Exclude<FetchError['failure'], 'blocked-address'>;
-		const fact = {
-			dns: res.detail.includes('no resuelve') ? 'El dominio de la web no resuelve: no le carga a nadie.' : 'El dominio de la web no existe.',
-			timeout: 'La web no responde.',
-			tls: 'La web da un error de certificado y no carga ni con http.',
-			network: 'La web no carga (error de red).',
-		}[failure];
-		result.evidence.push({ signal: `web_caida_${failure}`, fact, detail: res.detail });
+		// El dominio puede no existir o existir sin que sus DNS respondan
+		const vars = failure === 'dns' && res.detail.includes('no resuelve') ? { variant: 'servfail' } : undefined;
+		result.evidence.push({ signal: `web_caida_${failure}`, vars, detail: res.detail });
 		return result;
 	}
 	// Un 5xx puede ser pasajero: se repite una vez antes de darlo por bueno
@@ -217,14 +219,14 @@ export async function inspect(input: URL): Promise<Inspection> {
 		result.outcome = 'blocked';
 		result.evidence.push({
 			signal: 'web_bloquea_visita',
-			fact: `La web rechaza las visitas automáticas (HTTP ${res.status}), así que no se ha podido leer.`,
+			vars: { status: String(res.status) },
 			detail: `HTTP ${res.status}`,
 		});
 		return result;
 	}
 	if (res.status >= 400) {
 		result.outcome = 'down';
-		result.evidence.push({ signal: 'web_caida_http', fact: `La web devuelve un error ${res.status}.`, detail: `HTTP ${res.status}` });
+		result.evidence.push({ signal: 'web_caida_http', vars: { status: String(res.status) }, detail: `HTTP ${res.status}` });
 		return result;
 	}
 
@@ -232,7 +234,7 @@ export async function inspect(input: URL): Promise<Inspection> {
 
 	const moved = otherDomain(url, res.finalUrl);
 	if (moved) {
-		result.evidence.push({ signal: 'web_redirige_otro_dominio', fact: `La dirección lleva a otro dominio (${moved}).`, detail: res.finalUrl });
+		result.evidence.push({ signal: 'web_redirige_otro_dominio', vars: { domain: moved }, detail: res.finalUrl });
 	}
 
 	const page = readPage(res.body, res.finalUrl);
@@ -248,22 +250,19 @@ async function securityEvidence(finalUrl: string, httpsBroken: FetchError | null
 		return [
 			{
 				signal: httpsBroken.failure === 'tls' ? 'https_certificado' : 'sin_https',
-				fact:
-					httpsBroken.failure === 'tls'
-						? 'Con https:// la web da un error de certificado; solo carga con http://, sin conexión segura.'
-						: 'La web no responde con https://; solo carga con http://, sin conexión segura.',
+				vars: httpsBroken.failure === 'tls' ? undefined : { variant: 'https_no_responde' },
 				detail: httpsBroken.detail,
 			},
 		];
 	}
-	if (new URL(finalUrl).protocol === 'https:') return [{ signal: 'https_ok', fact: 'La web carga con conexión segura (https).' }];
+	if (new URL(finalUrl).protocol === 'https:') return [{ signal: 'https_ok' }];
 
 	// Se ha llegado por http: ¿existe la versión segura y simplemente no redirige?
 	const secure = await fetchPage(withProtocol(new URL(finalUrl), 'https:'), 5_000);
 	if (secure.ok && secure.status < 400) {
-		return [{ signal: 'http_sin_redirigir', fact: 'Con http:// la web no pasa sola a https://, aunque la versión segura existe.' }];
+		return [{ signal: 'http_sin_redirigir' }];
 	}
-	return [{ signal: 'sin_https', fact: 'La web solo carga con http://, sin conexión segura.', detail: secure.ok ? `HTTP ${secure.status}` : secure.detail }];
+	return [{ signal: 'sin_https', detail: secure.ok ? `HTTP ${secure.status}` : secure.detail }];
 }
 
 function readPage(html: string, pageUrl: string): PageSignals {
@@ -333,7 +332,7 @@ async function checkBookingUrls(urls: string[]): Promise<Evidence[]> {
 		const broken = !res.ok ? res.failure !== 'timeout' && res.failure !== 'blocked-address' : res.status === 404 || res.status === 410 || res.status >= 500;
 		if (broken) {
 			const detail = res.ok ? `HTTP ${res.status}` : res.detail;
-			ev.push({ signal: 'enlace_reserva_roto', fact: 'Un enlace de reserva o cita de la portada no funciona.', detail: `${url} → ${detail}` });
+			ev.push({ signal: 'enlace_reserva_roto', detail: `${url} → ${detail}` });
 		}
 	}
 	return ev;
@@ -360,28 +359,28 @@ function pageEvidence(p: PageSignals): Evidence[] {
 	if (p.telLinks.length === 0 && p.phonesInText.length > 0) {
 		ev.push({
 			signal: 'telefono_sin_enlace',
-			fact: `El teléfono ${formatPhone(unlinked[0])} aparece como texto, sin enlace para llamar.`,
+			vars: { phone: formatPhone(unlinked[0]) },
 			detail: unlinked[0],
 		});
 	} else if (p.telLinks.length > 0) {
-		ev.push({ signal: 'telefono_pulsable', fact: 'El teléfono tiene enlace: en el móvil se llama con un toque.' });
+		ev.push({ signal: 'telefono_pulsable' });
 	}
 	if (p.telLinks.length === 0 && p.phonesInText.length === 0 && !p.whatsapp && p.mailtoLinks === 0 && !hasForm) {
-		ev.push({ signal: 'sin_contacto_en_portada', fact: 'La portada no tiene teléfono, WhatsApp, email ni formulario.' });
+		ev.push({ signal: 'sin_contacto_en_portada' });
 	}
 	ev.push(
 		p.hasViewport
-			? { signal: 'movil_ok', fact: 'La página declara que está preparada para móvil (viewport).' }
-			: { signal: 'sin_viewport', fact: 'La página no declara viewport: no está preparada para verse en el móvil.' },
+			? { signal: 'movil_ok' }
+			: { signal: 'sin_viewport' },
 	);
 	if (p.copyrightYear !== null && new Date().getFullYear() - p.copyrightYear >= 3) {
-		ev.push({ signal: 'copyright_antiguo', fact: `El pie de la web dice © ${p.copyrightYear}.`, detail: String(p.copyrightYear) });
+		ev.push({ signal: 'copyright_antiguo', vars: { year: String(p.copyrightYear) } });
 	}
 	if (p.bookingLinks.length > 0) {
-		ev.push({ signal: 'reserva_online', fact: `Enlaza a reservas online (${p.bookingLinks.join(', ')}).` });
+		ev.push({ signal: 'reserva_online', vars: { platforms: p.bookingLinks.join(', ') } });
 	}
 	if (p.whatsapp) {
-		ev.push({ signal: 'whatsapp', fact: 'La portada tiene enlace o botón de WhatsApp.' });
+		ev.push({ signal: 'whatsapp' });
 	}
 	return ev;
 }
