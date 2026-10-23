@@ -55,6 +55,13 @@ const canonical = new URL(paths[lang], Astro.site);
 		<meta property="og:description" content={t.description} />
 		<meta property="og:url" content={canonical} />
 		<meta property="og:locale" content={t.locale} />
+		<!-- Vista previa al compartir (WhatsApp, LinkedIn…): la imagen del idioma
+		     de la página, con el estilo de las de felixcorcoran.es -->
+		<meta property="og:image" content={new URL(lang === 'en' ? '/og-en.png' : '/og.png', Astro.site)} />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
+		<meta property="og:image:alt" content={t.heading} />
+		<meta name="twitter:card" content="summary_large_image" />
 		<Font cssVariable="--font-sora" preload />
 		<!-- Visitas (Vercel Web Analytics: sin cookies). La dirección que se
 		     comprueba nunca llega aquí: va en el cuerpo de la petición a la API -->
