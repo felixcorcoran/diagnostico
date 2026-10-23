@@ -87,7 +87,8 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
 			hallazgos,
 			noComprobado,
 		});
-		cache.set(key, { at: Date.now(), body });
+		// «No se ha podido comprobar» no se guarda: volver a probar tiene que volver a mirar
+		if (result.outcome !== 'unverified') cache.set(key, { at: Date.now(), body });
 		return json(200, body);
 	} catch (err) {
 		if (err instanceof InputError) return json(400, { error: err.message });
