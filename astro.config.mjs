@@ -13,6 +13,9 @@ export default defineConfig({
     // El diagnóstico: https que no responde (8 s) + http (8 s) + páginas
     // internas y reservas (6 s). La velocidad (PageSpeed) puede tardar 50 s.
     maxDuration: 60,
+    webAnalytics: {
+      enabled: true,
+    },
   }),
   fonts: [
     {
