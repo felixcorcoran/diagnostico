@@ -225,19 +225,21 @@ const canonical = new URL(paths[lang], Astro.site);
 				flex: 1;
 				width: min(100% - 2 * var(--gutter), 46rem);
 				margin-inline: auto;
-				padding-top: calc(var(--nav-top) + var(--nav-height) + clamp(2rem, 8svh, 5rem));
+				padding-top: calc(var(--nav-top) + var(--nav-height) + clamp(1rem, 6svh, 5rem));
 			}
 
 			.is-idle main {
 				display: flex;
 				flex-direction: column;
 				justify-content: center;
-				padding-bottom: clamp(2rem, 6svh, 4rem);
+				padding-bottom: clamp(1rem, 4svh, 4rem);
 			}
 
+			/* El alto también manda: en pantallas bajas el título encoge para que
+			   la página siga cabiendo sin scroll */
 			.intro h1 {
 				margin: 0;
-				font-size: clamp(2rem, 6vw, 3.4rem);
+				font-size: clamp(1.75rem, min(6vw, 7svh), 3.4rem);
 				font-weight: 400;
 				line-height: 1.08;
 				letter-spacing: -0.03em;
