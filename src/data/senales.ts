@@ -46,6 +46,19 @@ export const niveles: Record<string, Nivel> = {
 	copyright_antiguo: 'aviso',
 	reserva_online: 'bien',
 	whatsapp: 'bien',
+	contacto_fuera_de_portada: 'aviso',
+	enlaces_rotos: 'fallo',
+	enlaces_ok: 'bien',
+	sin_titulo: 'fallo',
+	titulo_generico: 'aviso',
+	titulo_ok: 'bien',
+	sin_descripcion: 'aviso',
+	sin_vista_previa: 'aviso',
+	imagen_compartir_rota: 'fallo',
+	vista_previa_ok: 'bien',
+	velocidad_lenta: 'fallo',
+	velocidad_mejorable: 'aviso',
+	velocidad_ok: 'bien',
 };
 
 const caidaEs = 'Quien busca el negocio y pulsa en la web se encuentra un error. Es lo primero que conviene arreglar.';
@@ -103,17 +116,23 @@ const es: Record<string, Texto> = {
 	telefono_sin_enlace: {
 		titulo: 'El teléfono no se puede pulsar',
 		porQue: 'En el móvil, para llamar hay que copiar el número a mano. Con un enlace, se llama con un toque.',
-		hecho: (v) => `El teléfono ${v.phone} aparece como texto, sin enlace para llamar.`,
+		hecho: (v) =>
+			v.path
+				? `En ${v.path}, el teléfono ${v.phone} aparece como texto, sin enlace para llamar.`
+				: `El teléfono ${v.phone} aparece como texto, sin enlace para llamar.`,
 	},
 	telefono_pulsable: {
 		titulo: 'Teléfono pulsable',
 		porQue: 'Desde el móvil se llama sin copiar el número.',
-		hecho: () => 'El teléfono tiene enlace: en el móvil se llama con un toque.',
+		hecho: (v) => (v.path ? `En ${v.path}, el teléfono tiene enlace: en el móvil se llama con un toque.` : 'El teléfono tiene enlace: en el móvil se llama con un toque.'),
 	},
 	sin_contacto_en_portada: {
 		titulo: 'Sin forma de contacto en la portada',
-		porQue: 'Quien entra con ganas de llamar o escribir tiene que ir a buscar cómo. Solo se ha mirado la portada: puede que esté en otra página.',
-		hecho: () => 'La portada no tiene teléfono, WhatsApp, email ni formulario.',
+		porQue: 'Quien entra con ganas de llamar o escribir tiene que ir a buscar cómo.',
+		hecho: (v) =>
+			v.path
+				? `La portada no tiene teléfono, WhatsApp, email ni formulario, y la página de contacto (${v.path}) tampoco.`
+				: 'La portada no tiene teléfono, WhatsApp, email ni formulario, ni enlaza a una página de contacto.',
 	},
 	sin_viewport: {
 		titulo: 'No está preparada para el móvil',
@@ -137,6 +156,70 @@ const es: Record<string, Texto> = {
 	},
 	reserva_online: { titulo: 'Reserva online', porQue: 'Se puede reservar sin llamar.', hecho: (v) => `Enlaza a reservas online (${v.platforms}).` },
 	whatsapp: { titulo: 'WhatsApp', porQue: 'Se puede escribir directamente desde la web.', hecho: () => 'La portada tiene enlace o botón de WhatsApp.' },
+	contacto_fuera_de_portada: {
+		titulo: 'El contacto no está en la portada',
+		porQue: 'Quien entra con ganas de llamar o escribir tiene que dar un paso más para encontrar cómo.',
+		hecho: (v) => `La portada no tiene teléfono, WhatsApp, email ni formulario; están en ${v.path}.`,
+	},
+	enlaces_rotos: {
+		titulo: 'Hay enlaces rotos',
+		porQue: 'Quien pulsa ese enlace del menú o de la portada llega a una página que no existe.',
+		hecho: (v) =>
+			v.count === '1'
+				? `1 de las ${v.total} páginas que enlaza la portada da error (${v.examples}).`
+				: `${v.count} de las ${v.total} páginas que enlaza la portada dan error (${v.examples}…).`,
+	},
+	enlaces_ok: {
+		titulo: 'Enlaces que funcionan',
+		porQue: 'Las páginas del menú cargan.',
+		hecho: (v) => (v.total === '1' ? 'La página que enlaza la portada carga.' : `Las ${v.total} páginas que enlaza la portada cargan.`),
+	},
+	sin_titulo: {
+		titulo: 'Sin título para Google',
+		porQue: 'El título es el texto azul de los resultados de Google y el nombre de la pestaña. Sin él, Google pone el que le parece.',
+		hecho: () => 'La página no tiene título (<title>).',
+	},
+	titulo_generico: {
+		titulo: 'Título genérico',
+		porQue: 'Es lo que aparece en Google y en la pestaña, y no dice qué negocio es ni a qué se dedica.',
+		hecho: (v) => `El título de la página es «${v.title}».`,
+	},
+	titulo_ok: { titulo: 'Título para Google', porQue: 'Dice qué es la página.', hecho: (v) => `El título de la página es «${v.title}».` },
+	sin_descripcion: {
+		titulo: 'Sin descripción para Google',
+		porQue: 'Sin ella, Google elige por su cuenta el texto que enseña bajo el título.',
+		hecho: () => 'La página no tiene descripción (meta description).',
+	},
+	sin_vista_previa: {
+		titulo: 'Sin imagen al compartir',
+		porQue: 'Al pegar el enlace en WhatsApp o en redes, la vista previa sale sin imagen o con una que no has elegido tú.',
+		hecho: () => 'La página no indica qué imagen usar en la vista previa (og:image).',
+	},
+	imagen_compartir_rota: {
+		titulo: 'La imagen al compartir falla',
+		porQue: 'Al pegar el enlace en WhatsApp o en redes, la vista previa sale sin imagen.',
+		hecho: () => 'La imagen indicada para la vista previa (og:image) no carga.',
+	},
+	vista_previa_ok: {
+		titulo: 'Vista previa al compartir',
+		porQue: 'Al compartir el enlace sale con imagen.',
+		hecho: () => 'La página indica una imagen para la vista previa (og:image) y carga.',
+	},
+	velocidad_lenta: {
+		titulo: 'Lenta en el móvil',
+		porQue: 'Quien la abre en el móvil desde Google o desde Maps ve la pantalla a medias o en blanco durante esos segundos.',
+		hecho: (v) => `PageSpeed de Google le da ${v.score}/100 en móvil; el contenido principal tarda ${v.lcp} en aparecer.`,
+	},
+	velocidad_mejorable: {
+		titulo: 'Velocidad mejorable en el móvil',
+		porQue: 'No es grave, pero en el móvil se nota la espera antes de ver el contenido.',
+		hecho: (v) => `PageSpeed de Google le da ${v.score}/100 en móvil; el contenido principal tarda ${v.lcp} en aparecer.`,
+	},
+	velocidad_ok: {
+		titulo: 'Rápida en el móvil',
+		porQue: 'El contenido aparece enseguida.',
+		hecho: (v) => `PageSpeed de Google le da ${v.score}/100 en móvil; el contenido principal tarda ${v.lcp} en aparecer.`,
+	},
 };
 
 const en: Record<string, Texto> = {
@@ -191,17 +274,24 @@ const en: Record<string, Texto> = {
 	telefono_sin_enlace: {
 		titulo: "The phone number can't be tapped",
 		porQue: 'On a phone, people have to copy the number by hand to call. With a link, they call with one tap.',
-		hecho: (v) => `The phone number ${v.phone} appears as plain text, with no link to call.`,
+		hecho: (v) =>
+			v.path
+				? `On ${v.path}, the phone number ${v.phone} appears as plain text, with no link to call.`
+				: `The phone number ${v.phone} appears as plain text, with no link to call.`,
 	},
 	telefono_pulsable: {
 		titulo: 'Tappable phone number',
 		porQue: 'On a phone, people can call without copying the number.',
-		hecho: () => 'The phone number has a link: on a phone, it calls with one tap.',
+		hecho: (v) =>
+			v.path ? `On ${v.path}, the phone number has a link: on a phone, it calls with one tap.` : 'The phone number has a link: on a phone, it calls with one tap.',
 	},
 	sin_contacto_en_portada: {
 		titulo: 'No way to get in touch on the home page',
-		porQue: "Anyone who wants to call or write has to go looking for how. Only the home page was checked: it may be on another page.",
-		hecho: () => 'The home page has no phone number, WhatsApp, email or form.',
+		porQue: 'Anyone who wants to call or write has to go looking for how.',
+		hecho: (v) =>
+			v.path
+				? `The home page has no phone number, WhatsApp, email or form, and neither does the contact page (${v.path}).`
+				: "The home page has no phone number, WhatsApp, email or form, and doesn't link to a contact page.",
 	},
 	sin_viewport: {
 		titulo: "Not ready for phones",
@@ -225,6 +315,70 @@ const en: Record<string, Texto> = {
 	},
 	reserva_online: { titulo: 'Online booking', porQue: 'People can book without calling.', hecho: (v) => `It links to online booking (${v.platforms}).` },
 	whatsapp: { titulo: 'WhatsApp', porQue: 'People can message you straight from the website.', hecho: () => 'The home page has a WhatsApp link or button.' },
+	contacto_fuera_de_portada: {
+		titulo: "Contact details aren't on the home page",
+		porQue: 'Anyone who wants to call or write has to take one more step to find how.',
+		hecho: (v) => `The home page has no phone number, WhatsApp, email or form; they are on ${v.path}.`,
+	},
+	enlaces_rotos: {
+		titulo: 'There are broken links',
+		porQue: "Anyone who taps that link in the menu or on the home page lands on a page that doesn't exist.",
+		hecho: (v) =>
+			v.count === '1'
+				? `1 of the ${v.total} pages linked from the home page returns an error (${v.examples}).`
+				: `${v.count} of the ${v.total} pages linked from the home page return an error (${v.examples}…).`,
+	},
+	enlaces_ok: {
+		titulo: 'Links that work',
+		porQue: 'The menu pages load.',
+		hecho: (v) => (v.total === '1' ? 'The page linked from the home page loads.' : `All ${v.total} pages linked from the home page load.`),
+	},
+	sin_titulo: {
+		titulo: 'No title for Google',
+		porQue: "The title is the blue text in Google's results and the name of the browser tab. Without it, Google picks one itself.",
+		hecho: () => "The page doesn't have a title (<title>).",
+	},
+	titulo_generico: {
+		titulo: 'Generic title',
+		porQue: "It's what shows up on Google and in the browser tab, and it doesn't say which business it is or what it does.",
+		hecho: (v) => `The page title is "${v.title}".`,
+	},
+	titulo_ok: { titulo: 'Title for Google', porQue: 'It says what the page is.', hecho: (v) => `The page title is "${v.title}".` },
+	sin_descripcion: {
+		titulo: 'No description for Google',
+		porQue: 'Without it, Google chooses for itself the text it shows under the title.',
+		hecho: () => "The page doesn't have a description (meta description).",
+	},
+	sin_vista_previa: {
+		titulo: 'No image when shared',
+		porQue: "When the link is pasted into WhatsApp or social media, the preview shows no image, or one you didn't choose.",
+		hecho: () => "The page doesn't specify an image for link previews (og:image).",
+	},
+	imagen_compartir_rota: {
+		titulo: 'The share image is broken',
+		porQue: 'When the link is pasted into WhatsApp or social media, the preview shows no image.',
+		hecho: () => "The image specified for link previews (og:image) doesn't load.",
+	},
+	vista_previa_ok: {
+		titulo: 'Link preview',
+		porQue: 'When the link is shared, it shows an image.',
+		hecho: () => 'The page specifies an image for link previews (og:image) and it loads.',
+	},
+	velocidad_lenta: {
+		titulo: 'Slow on phones',
+		porQue: 'Anyone opening it on a phone from Google or Maps sees a half-loaded or blank screen for those seconds.',
+		hecho: (v) => `Google PageSpeed gives it ${v.score}/100 on mobile; the main content takes ${v.lcp} to appear.`,
+	},
+	velocidad_mejorable: {
+		titulo: 'Mobile speed could be better',
+		porQue: "It isn't serious, but on a phone the wait before the content appears is noticeable.",
+		hecho: (v) => `Google PageSpeed gives it ${v.score}/100 on mobile; the main content takes ${v.lcp} to appear.`,
+	},
+	velocidad_ok: {
+		titulo: 'Fast on phones',
+		porQue: 'The content appears straight away.',
+		hecho: (v) => `Google PageSpeed gives it ${v.score}/100 on mobile; the main content takes ${v.lcp} to appear.`,
+	},
 };
 
 const textos: Record<Lang, Record<string, Texto>> = { es, en };
@@ -253,15 +407,15 @@ export function describe(evidence: Evidence[], lang: Lang): Hallazgo[] {
 /** Lo que esta comprobación no mira: se dice siempre, para no prometer de más */
 export const noComprobado: Record<Lang, string[]> = {
 	es: [
-		'Solo se ha mirado la portada, no el resto de páginas.',
+		'Se han mirado la portada y las páginas que enlaza, no toda la web.',
 		'No se ha mirado la ficha de Google (reseñas, horario, fotos).',
-		'No se ha medido la velocidad ni se ha probado el formulario.',
+		'No se ha probado el formulario: habría que enviar un mensaje de verdad.',
 		'No se sabe qué pasa después de que alguien contacta: si se responde, cuánto se tarda, cómo se organiza.',
 	],
 	en: [
-		'Only the home page was checked, not the other pages.',
+		'The home page and the pages it links to were checked, not the whole website.',
 		"Your Google profile wasn't checked (reviews, opening hours, photos).",
-		"Speed wasn't measured and the form wasn't tested.",
+		"The form wasn't tested: that would mean sending a real message.",
 		"There's no way to know what happens after someone gets in touch: whether they get a reply, how long it takes, how it's handled.",
 	],
 };

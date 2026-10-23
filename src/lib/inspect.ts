@@ -34,6 +34,12 @@ export interface PageSignals {
 	/** Enlaces de reserva o cita (por plataforma o por el texto del botón), absolutos */
 	bookingUrls: string[];
 	copyrightYear: number | null;
+	/** <meta name="description">: el texto que Google puede enseñar bajo el título */
+	description: string | null;
+	/** og:image, absoluta: la imagen de la vista previa al compartir el enlace */
+	ogImage: string | null;
+	/** Enlaces a otras páginas de la misma web, en orden (el menú suele ir primero) */
+	internalLinks: { url: string; text: string }[];
 }
 
 export type Outcome =
@@ -239,8 +245,14 @@ export async function inspect(input: URL): Promise<Inspection> {
 
 	const page = readPage(res.body, res.finalUrl);
 	result.title = page.title;
-	result.evidence.push(...pageEvidence(page));
-	result.evidence.push(...(await checkBookingUrls(page.bookingUrls)));
+	// Todo lo que hay que abrir aparte (páginas internas, reservas, imagen de
+	// la vista previa) va a la vez: la espera es la del más lento, no la suma
+	const [internal, booking, preview] = await Promise.all([
+		checkInternalLinks(page.internalLinks),
+		checkBookingUrls(page.bookingUrls),
+		previewEvidence(page),
+	]);
+	result.evidence.push(...pageEvidence(page, internal.contact), ...internal.evidence, ...booking, ...preview);
 	return result;
 }
 
@@ -278,6 +290,16 @@ function readPage(html: string, pageUrl: string): PageSignals {
 		}
 	};
 	const bookings = bookingUrls($, pageUrl);
+	const absolute = (href: string | undefined) => {
+		try {
+			return href ? new URL(href.trim(), pageUrl).href : null;
+		} catch {
+			return null;
+		}
+	};
+	const ogImage = absolute($('meta[property="og:image"], meta[name="og:image"], meta[name="twitter:image"]').first().attr('content'));
+	const description = $('meta[name="description"]').first().attr('content')?.trim() || null;
+	const internal = internalLinks($, pageUrl);
 
 	$('script, style, noscript, template').remove();
 	const text = $('body').text().replace(/\s+/g, ' ').trim();
@@ -298,7 +320,103 @@ function readPage(html: string, pageUrl: string): PageSignals {
 		bookingLinks: [...new Set(hrefs.filter((h) => matchesDomain(hostOf(h), BOOKING)).map(hostOf))],
 		bookingUrls: bookings,
 		copyrightYear: years.length ? Math.max(...years) : null,
+		description,
+		ogImage: ogImage && /^https?:/.test(ogImage) ? ogImage : null,
+		internalLinks: internal,
 	};
+}
+
+const NOT_A_PAGE = /\.(pdf|jpe?g|png|gif|webp|svg|avif|zip|rar|docx?|xlsx?|pptx?|mp4|mp3|ics)$/i;
+// /cdn-cgi/: el email protegido de Cloudflare da 404 a un robot pero a una persona le funciona
+const SKIP_PATH = /\/(wp-admin|wp-login|feed|cart|carrito|checkout|my-account|mi-cuenta)(\/|$)|^\/cdn-cgi\/|\?(add-to-cart|replytocom)=/i;
+const MAX_INTERNAL = 12;
+
+/** Las otras páginas de la web que enlaza la portada (máximo 12, sin repetir) */
+function internalLinks($: cheerio.CheerioAPI, pageUrl: string): { url: string; text: string }[] {
+	const home = new URL(pageUrl);
+	const site = home.hostname.replace(/^www\./, '');
+	const seen = new Set([home.href.split('#')[0]]);
+	const links: { url: string; text: string }[] = [];
+	$('a[href]').each((_, a) => {
+		if (links.length >= MAX_INTERNAL) return false;
+		let url: URL;
+		try {
+			url = new URL(($(a).attr('href') ?? '').trim(), pageUrl);
+		} catch {
+			return;
+		}
+		url.hash = '';
+		if (!/^https?:$/.test(url.protocol) || url.hostname.replace(/^www\./, '') !== site) return;
+		if (NOT_A_PAGE.test(url.pathname) || SKIP_PATH.test(url.pathname + url.search) || seen.has(url.href)) return;
+		seen.add(url.href);
+		links.push({ url: url.href, text: $(a).text().replace(/\s+/g, ' ').trim() });
+	});
+	return links;
+}
+
+const CONTACT = /contact|contacto|contactar|contacta|cont[aá]ctanos|ll[aá]manos|donde-estamos|d[oó]nde estamos|ubicaci[oó]n/i;
+
+interface ContactPage {
+	path: string;
+	page: PageSignals;
+}
+
+/**
+ * Las páginas que enlaza la portada, a la vez: ¿alguna está rota? Y, de paso,
+ * la de contacto: lo que no está en la portada puede estar ahí.
+ * Solo cuentan como rotas las que dan 404/410 o no existen: un fallo de red o
+ * una protección contra robots no se puede afirmar como «roto».
+ */
+async function checkInternalLinks(links: { url: string; text: string }[]): Promise<{ evidence: Evidence[]; contact: ContactPage | null }> {
+	if (links.length === 0) return { evidence: [], contact: null };
+	const results = await Promise.all(links.map(async (link) => ({ link, res: await fetchPage(link.url, 6_000) })));
+
+	const broken = results.filter(({ res }) => (res.ok ? res.status === 404 || res.status === 410 : res.failure === 'dns'));
+	const checked = results.filter(({ res }) => res.ok || res.failure === 'dns');
+	const pathOf = (url: string) => {
+		const u = new URL(url);
+		return decodeURI(u.pathname + u.search);
+	};
+
+	const evidence: Evidence[] = [];
+	if (broken.length > 0) {
+		evidence.push({
+			signal: 'enlaces_rotos',
+			vars: { count: String(broken.length), total: String(checked.length), examples: broken.slice(0, 2).map(({ link }) => pathOf(link.url)).join(', ') },
+			detail: broken.map(({ link, res }) => `${link.url} → ${res.ok ? `HTTP ${res.status}` : res.detail}`).join('; '),
+		});
+	} else if (checked.length > 0) {
+		evidence.push({ signal: 'enlaces_ok', vars: { total: String(checked.length) } });
+	}
+
+	const contactHit = results.find(
+		({ link, res }) => (CONTACT.test(link.text) || CONTACT.test(new URL(link.url).pathname)) && res.ok && res.status < 400 && res.body,
+	);
+	const contact =
+		contactHit && contactHit.res.ok ? { path: pathOf(contactHit.res.finalUrl), page: readPage(contactHit.res.body, contactHit.res.finalUrl) } : null;
+	return { evidence, contact };
+}
+
+const GENERIC_TITLE = /^(inicio|home|homepage|index|p[aá]gina principal|portada|untitled|sin t[ií]tulo|mi sitio|my site|my wordpress blog|bienvenid[oa]s?|welcome|just another wordpress site)$/i;
+
+/** Lo que se ve de la web antes de entrar: en Google y al compartir el enlace */
+async function previewEvidence(p: PageSignals): Promise<Evidence[]> {
+	const ev: Evidence[] = [];
+	const title = p.title?.replace(/\s+/g, ' ').trim() ?? '';
+	if (!title) ev.push({ signal: 'sin_titulo' });
+	// Genérico solo si no dice nada más: «Inicio - Peluquería Pilar» ya lleva el nombre
+	else if (GENERIC_TITLE.test(title)) ev.push({ signal: 'titulo_generico', vars: { title } });
+	else ev.push({ signal: 'titulo_ok', vars: { title: title.length > 70 ? `${title.slice(0, 67)}…` : title } });
+	if (title && !p.description) ev.push({ signal: 'sin_descripcion' });
+
+	if (!p.ogImage) {
+		ev.push({ signal: 'sin_vista_previa' });
+	} else {
+		const res = await fetchPage(p.ogImage, 6_000);
+		const broken = res.ok ? res.status === 404 || res.status === 410 || (res.status < 400 && !res.contentType.startsWith('image/')) : res.failure === 'dns' || res.failure === 'tls';
+		ev.push(broken ? { signal: 'imagen_compartir_rota', detail: p.ogImage } : { signal: 'vista_previa_ok' });
+	}
+	return ev;
 }
 
 const BOOKING_TEXT = /reserv|pedir cita|pide (tu )?cita|solicitar cita|cita (previa|online)|book (now|online|an appointment)/i;
@@ -350,23 +468,31 @@ function findPhones(text: string): string[] {
 
 const formatPhone = (digits: string) => digits.replace(/^(\d{3})(\d{3})(\d{3})$/, '$1 $2 $3');
 
-function pageEvidence(p: PageSignals): Evidence[] {
-	const ev: Evidence[] = [];
+const hasContact = (p: PageSignals) =>
+	p.telLinks.length > 0 || p.phonesInText.length > 0 || p.whatsapp || p.mailtoLinks > 0 || p.forms > 0 || p.formPlugins.length > 0;
+
+/** El teléfono de una página: pulsable, escrito sin enlace o ninguno */
+function phoneEvidence(p: PageSignals, path?: string): Evidence | null {
 	const telDigits = new Set(p.telLinks.map((t) => t.replace(/\D/g, '').replace(/^34(?=\d{9}$)/, '')));
 	const unlinked = p.phonesInText.filter((n) => !telDigits.has(n));
-	const hasForm = p.forms > 0 || p.formPlugins.length > 0;
-
-	if (p.telLinks.length === 0 && p.phonesInText.length > 0) {
-		ev.push({
-			signal: 'telefono_sin_enlace',
-			vars: { phone: formatPhone(unlinked[0]) },
-			detail: unlinked[0],
-		});
-	} else if (p.telLinks.length > 0) {
-		ev.push({ signal: 'telefono_pulsable' });
+	const where: Record<string, string> = path ? { path } : {};
+	if (p.telLinks.length === 0 && unlinked.length > 0) {
+		return { signal: 'telefono_sin_enlace', vars: { phone: formatPhone(unlinked[0]), ...where }, detail: unlinked[0] };
 	}
-	if (p.telLinks.length === 0 && p.phonesInText.length === 0 && !p.whatsapp && p.mailtoLinks === 0 && !hasForm) {
-		ev.push({ signal: 'sin_contacto_en_portada' });
+	if (p.telLinks.length > 0) return { signal: 'telefono_pulsable', vars: path ? where : undefined };
+	return null;
+}
+
+function pageEvidence(p: PageSignals, contact: ContactPage | null): Evidence[] {
+	const ev: Evidence[] = [];
+
+	// Sin teléfono en la portada, cuenta el de la página de contacto
+	const phone = phoneEvidence(p) ?? (contact ? phoneEvidence(contact.page, contact.path) : null);
+	if (phone) ev.push(phone);
+
+	if (!hasContact(p)) {
+		if (contact && hasContact(contact.page)) ev.push({ signal: 'contacto_fuera_de_portada', vars: { path: contact.path } });
+		else ev.push({ signal: 'sin_contacto_en_portada', vars: contact ? { path: contact.path } : undefined });
 	}
 	ev.push(
 		p.hasViewport

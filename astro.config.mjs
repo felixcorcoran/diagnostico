@@ -7,12 +7,12 @@ const sora = (weight) => `@fontsource/sora/files/sora-latin-${weight}-normal.wof
 
 export default defineConfig({
   site: 'https://diagnostico.felixcorcoran.es',
-  // La página es estática; solo /api/diagnostico se ejecuta en el servidor
+  // La página es estática; solo /api/diagnostico y /api/velocidad van en el servidor
   output: 'static',
   adapter: vercel({
-    // Peor caso medido en el código: https que no responde (8 s) + http
-    // (8 s) + enlaces de reserva (6 s). Con margen.
-    maxDuration: 30,
+    // El diagnóstico: https que no responde (8 s) + http (8 s) + páginas
+    // internas y reservas (6 s). La velocidad (PageSpeed) puede tardar 50 s.
+    maxDuration: 60,
   }),
   fonts: [
     {

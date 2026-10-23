@@ -33,6 +33,9 @@ export const textos = {
 			fix: ['cosa que arreglar', 'cosas que arreglar'],
 			review: ['cosa que revisar', 'cosas que revisar'],
 			good: ['cosa bien', 'cosas bien'],
+			speedTag: 'Midiendo',
+			speedTitle: 'Velocidad en móvil',
+			speedFact: 'Midiendo con PageSpeed de Google. Tarda unos 20 segundos.',
 		},
 	},
 	en: {
@@ -66,6 +69,9 @@ export const textos = {
 			fix: ['thing to fix', 'things to fix'],
 			review: ['thing to review', 'things to review'],
 			good: ['thing done right', 'things done right'],
+			speedTag: 'Measuring',
+			speedTitle: 'Mobile speed',
+			speedFact: 'Measuring with Google PageSpeed. It takes about 20 seconds.',
 		},
 	},
 } satisfies Record<Lang, unknown>;

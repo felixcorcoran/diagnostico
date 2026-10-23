@@ -126,6 +126,7 @@ const canonical = new URL(paths[lang], Astro.site);
 				estado: 'ok' | 'down' | 'unverified' | 'blocked';
 				hallazgos: Hallazgo[];
 				noComprobado: string[];
+				velocidad: boolean;
 			}
 
 			const t = JSON.parse(document.querySelector('#textos')!.textContent!) as ClientTexts & { lang: 'es' | 'en' };
@@ -157,26 +158,55 @@ const canonical = new URL(paths[lang], Astro.site);
 				return parts;
 			}
 
-			function render(data: Respuesta) {
-				document.querySelector('#result-title')!.textContent = new URL(data.finalUrl ?? data.url).hostname.replace(/^www\./, '');
-				document.querySelector('#result-summary')!.replaceChildren(...summary(data));
+			function finding(nivel: Nivel | 'pending', tagText: string, titulo: string, hecho: string, porQue?: string) {
+				const item = el('li', `finding finding--${nivel}`);
+				const head = el('div', 'finding-head');
+				const tag = el('span', 'tag');
+				tag.append(el('span', 'dot'), tagText);
+				head.append(tag, el('h3', '', titulo));
+				item.append(head, el('p', 'fact', hecho));
+				if (porQue) item.append(el('p', 'why', porQue));
+				return item;
+			}
 
-				document.querySelector('#findings')!.replaceChildren(
-					...data.hallazgos.map((h) => {
-						const item = el('li', `finding finding--${h.nivel}`);
-						const head = el('div', 'finding-head');
-						const tag = el('span', 'tag');
-						tag.append(el('span', 'dot'), t.tags[h.nivel]);
-						head.append(tag, el('h3', '', h.titulo));
-						item.append(head, el('p', 'fact', h.hecho), el('p', 'why', h.porQue));
-						return item;
-					}),
-				);
+			// La lista y el resumen se repintan cuando llega la velocidad, sin mover la página
+			const ORDER: Record<Nivel, number> = { fallo: 0, aviso: 1, neutro: 2, bien: 3 };
+			function paint(data: Respuesta, measuring: boolean) {
+				document.querySelector('#result-summary')!.replaceChildren(...summary(data));
+				const items = [...data.hallazgos]
+					.sort((a, b) => ORDER[a.nivel] - ORDER[b.nivel])
+					.map((h) => finding(h.nivel, t.tags[h.nivel], h.titulo, h.hecho, h.porQue));
+				if (measuring) items.push(finding('pending', t.speedTag, t.speedTitle, t.speedFact));
+				document.querySelector('#findings')!.replaceChildren(...items);
+			}
+
+			function render(data: Respuesta, measuring: boolean) {
+				document.querySelector('#result-title')!.textContent = new URL(data.finalUrl ?? data.url).hostname.replace(/^www\./, '');
+				paint(data, measuring);
 				document.querySelector('#limits')!.replaceChildren(...data.noComprobado.map((text) => el('li', '', text)));
 
 				document.body.classList.remove('is-idle');
 				result.hidden = false;
 				result.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+			}
+
+			// Cada comprobación tiene su número: si llega tarde la velocidad de una
+			// anterior, se descarta
+			let run = 0;
+
+			async function measureSpeed(data: Respuesta, mine: number) {
+				let extra: Hallazgo[] = [];
+				try {
+					const res = await fetch('/api/velocidad', {
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({ url: data.finalUrl ?? data.url, lang: t.lang }),
+					});
+					const speed = await res.json();
+					if (speed.disponible) extra = speed.hallazgos;
+				} catch {}
+				if (mine !== run) return;
+				paint({ ...data, hallazgos: [...data.hallazgos, ...extra] }, false);
 			}
 
 			form.addEventListener('submit', async (event) => {
@@ -189,6 +219,7 @@ const canonical = new URL(paths[lang], Astro.site);
 					input.focus();
 					return;
 				}
+				const mine = ++run;
 				button.disabled = true;
 				form.setAttribute('aria-busy', 'true');
 				result.hidden = true;
@@ -204,7 +235,10 @@ const canonical = new URL(paths[lang], Astro.site);
 					const data = await res.json();
 					if (!res.ok) throw new Error(data.error ?? t.failed);
 					status.textContent = '';
-					render(data as Respuesta);
+					// La velocidad solo tiene sentido si la web carga (y si hay clave de PageSpeed)
+					const measuring = (data as Respuesta).velocidad;
+					render(data as Respuesta, measuring);
+					if (measuring) measureSpeed(data as Respuesta, mine);
 				} catch (err) {
 					status.classList.add('is-error');
 					status.textContent = err instanceof TypeError ? t.offline : (err as Error).message;
@@ -525,6 +559,18 @@ const canonical = new URL(paths[lang], Astro.site);
 
 			.finding--bien .why {
 				display: none;
+			}
+
+			/* Velocidad, mientras PageSpeed mide: el punto coral latiendo */
+			.finding--pending .dot {
+				background: var(--accent);
+				box-shadow: none;
+				animation: pulse 1.2s var(--ease-out) infinite;
+			}
+
+			.finding--pending .fact {
+				color: var(--text-muted);
+				font-weight: 300;
 			}
 
 			.limits {
