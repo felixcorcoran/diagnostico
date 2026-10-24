@@ -12,6 +12,8 @@ export const site = (lang: Lang) => ({
 	legal: 'https://felixcorcoran.es/aviso-legal',
 	privacy: 'https://felixcorcoran.es/privacidad',
 	email: 'contacto@felixcorcoran.es',
+	/** La otra herramienta gratuita: el radar de subvenciones (solo en español) */
+	subvenciones: 'https://subvenciones.felixcorcoran.es/',
 });
 
 /** Esta misma herramienta en cada idioma */

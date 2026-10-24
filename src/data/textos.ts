@@ -20,7 +20,7 @@ export const textos = {
 		ctaText:
 			'Si quieres que mire tu negocio por dentro, cuéntame un poco de él y qué te gustaría mejorar. Te enseño hasta 3 oportunidades concretas. Gratis y sin compromiso.',
 		ctaLink: 'Solicitar auditoría gratuita',
-		footer: { legal: 'Aviso legal', privacy: 'Privacidad', other: 'English' },
+		footer: { legal: 'Aviso legal', privacy: 'Privacidad', other: 'English', subvenciones: 'Radar de subvenciones' },
 		client: {
 			tags: { fallo: 'Arreglar', aviso: 'Revisar', neutro: 'Sin datos', bien: 'Bien' } satisfies Record<Nivel, string>,
 			checking: 'Comprobando {url}… Suele tardar unos segundos.',
@@ -56,7 +56,7 @@ export const textos = {
 		ctaText:
 			"If you'd like me to look at your business from the inside, tell me a bit about it and what you'd like to improve. I'll show you up to 3 concrete opportunities. Free, no strings attached.",
 		ctaLink: 'Request a free audit',
-		footer: { legal: 'Legal notice', privacy: 'Privacy', other: 'Español' },
+		footer: { legal: 'Legal notice', privacy: 'Privacy', other: 'Español', subvenciones: 'Grants radar (in Spanish)' },
 		client: {
 			tags: { fallo: 'Fix', aviso: 'Review', neutro: 'No data', bien: 'Good' } satisfies Record<Nivel, string>,
 			checking: 'Checking {url}… It usually takes a few seconds.',
