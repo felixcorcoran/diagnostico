@@ -1,5 +1,7 @@
 # Diagnóstico web
 
+[![Pruebas](https://github.com/felixcorcoran/diagnostico/actions/workflows/pruebas.yml/badge.svg)](https://github.com/felixcorcoran/diagnostico/actions/workflows/pruebas.yml)
+
 Herramienta pública: escribes la dirección de una web y te dice qué se encuentra un cliente al entrar, solo con hechos que el código puede comprobar. Español e inglés, modo claro y oscuro.
 
 **En marcha:** [diagnostico.felixcorcoran.es](https://diagnostico.felixcorcoran.es) · [English](https://diagnostico.felixcorcoran.es/en)
@@ -33,6 +35,7 @@ src/lib/limit.ts              límite por IP y caché
 src/data/senales.ts           textos de cada señal (es / en)
 src/pages/api/                diagnostico.ts (POST { url }) y velocidad.ts
 src/views/Diagnostico.astro   la página
+tests/                        pruebas (Vitest)
 ```
 
 ## En local
@@ -40,8 +43,11 @@ src/views/Diagnostico.astro   la página
 ```sh
 npm install
 npx astro dev
+npm test
 npx astro check
 ```
+
+Las pruebas cubren la protección SSRF (IPs privadas, IPv6, puertos, nombres internos), lo que se acepta como dirección, lo que se lee de una página de ejemplo (teléfonos, formularios, WhatsApp, copyright, vista previa) y los límites. Se pasan en cada push con GitHub Actions, junto a `astro check` y el build.
 
 Para la velocidad en móvil, añade `PAGESPEED_API_KEY` en `.env.local` (gratis en Google Cloud). Sin ella, el resto funciona igual.
 

@@ -141,7 +141,7 @@ async function publicDns(url: string): Promise<'ok' | 'nxdomain' | 'servfail'> {
 }
 
 /** El dominio registrable al que se ha acabado llegando, si es otro distinto */
-function otherDomain(from: string, to: string): string | null {
+export function otherDomain(from: string, to: string): string | null {
 	const base = (u: string) => new URL(u).hostname.replace(/^www\./, '').split('.').slice(-2).join('.');
 	try {
 		return base(from) === base(to) ? null : new URL(to).hostname;
@@ -277,7 +277,8 @@ async function securityEvidence(finalUrl: string, httpsBroken: FetchError | null
 	return [{ signal: 'sin_https', detail: secure.ok ? `HTTP ${secure.status}` : secure.detail }];
 }
 
-function readPage(html: string, pageUrl: string): PageSignals {
+/** Lo que se ve en el HTML de una página (exportada también para los tests) */
+export function readPage(html: string, pageUrl: string): PageSignals {
 	const $ = cheerio.load(html);
 	const hrefs = $('a[href]')
 		.map((_, a) => $(a).attr('href') ?? '')
@@ -457,7 +458,7 @@ async function checkBookingUrls(urls: string[]): Promise<Evidence[]> {
 }
 
 /** Teléfonos españoles de 9 cifras escritos en el texto */
-function findPhones(text: string): string[] {
+export function findPhones(text: string): string[] {
 	const found = new Set<string>();
 	for (const m of text.matchAll(/(?:\+34[\s.-]?)?(?<!\d)[6789]\d{2}(?:[\s.-]?\d{2,3}){2,3}(?!\d)/g)) {
 		const digits = m[0].replace(/\D/g, '').replace(/^34(?=\d{9}$)/, '');
